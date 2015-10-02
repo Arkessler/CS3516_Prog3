@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <sstream>
 #include <netdb.h> 																														//For hostent
-//#hi
 #include <unistd.h> 
 #include <stdio.h>
 #include <sys/socket.h>
