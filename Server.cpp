@@ -31,7 +31,7 @@ using namespace std;
 
 #define MAXPENDING 5 /* Maximum outstanding connection requests */
 #define BUFFSIZE 32   /* Size of receive buffer */
-#define SERVPORT 1909	//Maximun ammount of entries on the list
+#define SERVPORT 1099	//Maximun ammount of entries on the list
 
 
 void DieWithError(char *errorMessage); /* Error handling function */
