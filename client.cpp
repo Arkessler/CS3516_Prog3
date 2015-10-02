@@ -12,13 +12,30 @@
 #include <sys/time.h>
 #include <netinet/tcp.h> 
 #include <sstream>
-#include <istream>
+#include <fstream>
 
 #define CHUNK_SIZE 256
 #define PACKET_SZIE CHUNK_SIZE+1
 #define MAX_FRAME_PAYLOAD 130
 
 using namespace std;
+
+class packet
+{
+	public:
+		char payload[256]; 																//256 bytes long
+		char endPhoto;																	//1 byte long end of photo indicator
+};
+
+class frame
+{
+	public:
+		short int seqNumber; 															//2 bytes long
+		char frameType; 																//1 byte long
+		char EOP;																		//1 byte long 
+		char payload[130];																//130 bytes long
+		short int XOR;																	//2 bytes long
+};
 
 //typedef enum {frame_arrival} event_type
 
@@ -40,6 +57,8 @@ void phl_recv();
 void phl_close(int sock);
 //Misc functions
 void DieWithError(char *errorMessage);
+void testSendMessage(int sockfd);
+void testSendFrame(int sockfd, frame fr);
 
 int main(int argc, char* argv[])
 {
@@ -91,29 +110,24 @@ int main(int argc, char* argv[])
 	phl_close(sockfd);
 }
 
-class packet
-{
-	char payload[256]; 																//256 bytes long
-	char endPhoto		;															//1 byte long end of photo indicator
-} packet;
-
-class frame
-{
-	short int seqNumber; 															//2 bytes long
-	char frameType; 																//1 byte long
-	char EOP;																		//1 byte long 
-	char payload[130];																//130 bytes long
-	short int XOR;																	//2 bytes long
-} frame;
-
 void nwl_read(std::string fileName)
 {
-	unsigned char buf[300];
+	std::ifstream stream (fileName.c_str(), std::ifstream::binary);
+	char buf[300];
 	char currChar;
-	//iStream.open(&fileName, std::ifstream::in);
-	while (iStream.read(buf, 256))
+	
+	if (DEBUG)
+		cout<<"Starting read"<<std::endl;
+	while (stream)
 	{
-		packet newPacket = new packet();
+		stream.read(buf, 256);
+		packet *newPacket = new packet();
+		cout<<"Buf: "<<buf<<std::endl;
+		if (!stream) //End of file
+		{
+			
+		}
+		memset(buf, 0, 300);
 	}
 		//Construct packet
 		//dll_send(packet)
@@ -206,4 +220,18 @@ void waitEvent()
 {
 	
 }
+
+void testSendMessage(int sockfd)
+{
+	char * sendChar = "Test message. It worked!!\n";
+	int sendLength = strlen(sendChar);
+	
+	int sendRes = 0;
+	sendRes = send(sockfd, sendChar, sendLength, 0);
+	if (sendRes != sendLength)
+		cout<<"Send failed, different number of bytes sent. Expected: "<<sendLength<<" Sent: "<<sendRes<<std::endl;
+	else
+		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
+}
+
 
