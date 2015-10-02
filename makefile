@@ -1,8 +1,9 @@
 CC=g++
+all: Client Server 
 
-client: client.cpp DieWithError.cpp
+Client: client.cpp DieWithError.cpp
 	$(CC) -Wall client.cpp DieWithError.cpp -o client
 
-server: server.cpp DieWithError.cpp
-	$(CC) -Wall server.cpp DiewWithError.cpp -o server
+Server: Server.cpp DieWithError.cpp
+	$(CC) -Wall Server.cpp -o Server
 

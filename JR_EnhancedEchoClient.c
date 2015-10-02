@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
   }
 
   else
- 	echoServPort = "1099"; 		/* 7 is the well-known port for the echo service */
+ 	echoServPort = "1199"; 		/* 7 is the well-known port for the echo service */
 
  char *echoString[StrCnt + 1]; 		/* Array of strings to send to echo server with room for x strings + final two bytes*/
 

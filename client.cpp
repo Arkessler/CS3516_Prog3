@@ -11,7 +11,9 @@
 #include <netinet/tcp.h> 
 #include <sstream>																													//Provides stringStream
 #include <fstream>																													//Provides ofstream, read()
+#include <errno.h>
 
+#define DEFAULT_PORT 1199
 #define CHUNK_SIZE 256
 #define PACKET_SIZE CHUNK_SIZE+1
 #define MAX_FRAME_PAYLOAD 130
@@ -73,7 +75,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	//Connection variables
 	int sockfd;
 	struct sockaddr_in serverAddress;
-	unsigned short portNumber = 1099; 																								//Assuming use of "well-known" port
+	unsigned short portNumber = DEFAULT_PORT; 																								//Assuming use of "well-known" port
 	
 	//Misc variables
 	std::stringstream manipStream;
@@ -88,12 +90,13 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	int count = 0;
 	
 	std::string readLoc; 
-	
+
 	int connectRes = phl_connect(&sockfd, serverAddress, portNumber, serverName);
 	if (DEBUG)
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 	
-	testSendFrame(1099);
+	testSendMessage(sockfd);
+	//testSendFrame(1099);
 	
 	for (count = 0; count<numPhoto; count++)
 	{
@@ -127,7 +130,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 	{
 		stream.read(buf, 256);
 		packet *newPacket = new packet();
-		cout<<"Buf: "<<buf<<std::endl;
+		//cout<<"Buf: "<<buf<<std::endl;
 		if (!stream) //End of file
 		{
 			if (DEBUG)
@@ -181,14 +184,21 @@ int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serv
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC; 																									// use AF_INET6 if desire is to force IPv6
 	hints.ai_socktype = SOCK_STREAM;
+
+	stringstream tempStream;
+	tempStream<<serverPort;
+	string tempStr = tempStream.str();
+	char * portChar = (char*)tempStr.c_str();
 	
-	if ((rv = getaddrinfo(serverName, "http", &hints, &servinfo)) != 0) {
+	if ((rv = getaddrinfo(serverName, portChar, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		exit(1);
 	}
 																							
 	for(p = servinfo; p != NULL; p = p->ai_next)
-	{																																//loop through all the results 		
+	{															//loop through all the results 		
+		
+		cout<<"Checking getaddrinfo result"<<std::endl;
 		if ((*sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
 		{
 			perror("socket");
@@ -198,15 +208,24 @@ int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serv
 		serverAddress.sin_family  = AF_INET;    																					//Set Internet address family
 		serverAddress.sin_addr.s_addr =inet_addr(inet_ntoa((struct in_addr) ((struct sockaddr_in *)(p->ai_addr))->sin_addr));  		//Set server IP address using result from getaddrinfo()
 		serverAddress.sin_port = htons(serverPort);																					//Set server port. Use well-known port due to getaddrinfo() returning port 80																															//Connect to echo server
-		if (connect(*sock, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) < 0) 											//Test that connection is successful
+		cout<<"Attempting connect.\nServer name: "<<serverName<<std::endl;
+		int connectRes;
+		if ((connectRes = connect(*sock, p->ai_addr, p->ai_addrlen)) != 0) 											//Test that connection is successful
+		{
+			if (DEBUG)
+			{
+				cout<<"ConnectRes: "<<connectRes<<std::endl;
+				cout<<"Error number: "<<strerror(errno)<<std::endl;
+			}
 			return -1;
+		}
 		else
 			return 0;
 	}
 	return -2; //Should not reach this point
 }
 
-void phl_send()																														//Alexi Kessler
+void phl_send(frame fr)																														//Alexi Kessler
 {
 	//Send over TCP connection
 	//phl_recv()
@@ -229,6 +248,7 @@ void waitEvent()
 
 void testSendMessage(int sockfd)																									//Alexi Kessler
 {
+	cout<<"Testing send message"<<std::endl;
 	char * sendChar = "Test message. It worked!!\n";
 	int sendLength = strlen(sendChar);
 	
