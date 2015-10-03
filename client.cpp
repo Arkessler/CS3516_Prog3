@@ -19,8 +19,9 @@
 #define MAX_FRAME_PAYLOAD 130
 #define MAX_FRAME_SIZE 200
 #define DATA_FRAME 'D'
-#define ACK_FRAME 6
+#define ACK_FRAME 'A'
 #define END_PACKET 'P'
+#define CONT_PACKET 'C'
 
 using namespace std;
 
@@ -45,6 +46,8 @@ class frame
 
 //Debug variable(s)
 bool DEBUG = true;
+//Send global var(s)
+short int sequenceNumber = 0;
 //Misc global var(s)
 std::ofstream fileStream;
 
@@ -52,17 +55,19 @@ std::ofstream fileStream;
 void nwl_read(std::string fileName);
 void nwl_recv();
 //Data Link layer functions
-void dll_send();
+void dll_send(packet pkt);
 void dll_recv();
 //Physical layer functions
 int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName);
-void phl_send();
+void phl_send(frame fr);
 void phl_recv();
 void phl_close(int sock);
 //Misc functions
 void DieWithError(char *errorMessage);
+short int errorDetectCreate(short int seq, char frameType, char EOP, char payload[]);
 void testSendMessage(int sockfd);
 void testSendFrame(int sockfd);
+void printFrame (frame fr);
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -124,27 +129,40 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 	char buf[300];
 	char currChar;
 	
+	int counter = 0;
 	if (DEBUG)
 		cout<<"Starting read"<<std::endl;
 	while (stream)
 	{
 		stream.read(buf, 256);
-		packet *newPacket = new packet();
-		//cout<<"Buf: "<<buf<<std::endl;
-		if (!stream) //End of file
+		cout<<"buf: "<<buf<<std::endl;
+		if ((stream.gcount()) == 256)
 		{
-			if (DEBUG)
-				cout<<"Reached end of file!"<<std::endl;
+			packet * sendPacket = new packet();
+			
+			sendPacket->endPhoto = CONT_PACKET;
+			strncpy(sendPacket->payload, buf, 256);
+			dll_send(*sendPacket);
+			counter++;
+			if (counter > 2)
+				DieWithError("Done test");
+			//Wait on nwl_ACK
+		} 
+		else 
+		{
+			cout<<"Read less than 256 bytes."<<std::endl;
+			packet * sendPacket = new packet();
+			
+			sendPacket->endPhoto = END_PACKET;
+			strncpy(sendPacket->payload, buf, (size_t)(stream.gcount()));
+			dll_send(*sendPacket);
+			cout<<"SENT A SINGLE PACKET"<<std::endl;
+			DieWithError("Done test");
+			//Wait on new_ACK
 		}
 		memset(buf, 0, 300);
 	}
-		//Construct packet
-		//dll_send(packet)
-		//Wait on nwl_ACK
-	//If buf not empty
-		//Construct packet
-		//dll_send(packet)
-		//Wait on nwl_ACK;
+	cout<<"Reached end of file"<<std::endl;
 }
 
 void nwl_recv()																														//Alexi Kessler
@@ -152,10 +170,69 @@ void nwl_recv()																														//Alexi Kessler
 	
 }
 
-void dll_send()																														//Alexi Kessler
+void dll_send(packet pkt)																														//Alexi Kessler
 {
-	//Read packet
-	//Separate into payloads
+	bool endPhoto;
+	char givenArray[CHUNK_SIZE];
+	char framePayload[MAX_FRAME_PAYLOAD];
+	if (pkt.endPhoto == END_PACKET)
+	{
+		endPhoto = true;
+	}
+	else 
+	{
+		endPhoto = false;
+	}
+	strncpy(givenArray, pkt.payload, CHUNK_SIZE);
+	int i = 0;
+	int counter = 0;
+	
+	while (i < CHUNK_SIZE)
+	{
+		if (DEBUG)
+			cout<<"\ni: "<<i<<" counter: "<<counter<<std::endl;
+		if (counter < MAX_FRAME_PAYLOAD)
+		{
+			if (DEBUG)
+				cout<<"Copying "<<i<<" character of array"<<std::endl;
+			framePayload[counter] = givenArray[i];
+			counter++;
+		}
+		else
+		{
+			frame* sendFrame = new frame();
+			
+			sendFrame->seqNumber = sequenceNumber;
+			sequenceNumber++;
+			sendFrame->frameType = DATA_FRAME;
+			if (endPhoto)
+				sendFrame->EOP = END_PACKET;
+			else 
+				sendFrame->EOP = CONT_PACKET;
+			strncpy(sendFrame->payload, framePayload, MAX_FRAME_PAYLOAD);
+			sendFrame->ED = errorDetectCreate(sendFrame->seqNumber, sendFrame->frameType, sendFrame->EOP, sendFrame->payload);
+			phl_send(*sendFrame);
+			counter = 0;
+		}
+		i++;
+	}
+	
+	if (counter!= 0)
+	{
+		frame* sendFrame = new frame;
+			
+		sendFrame->seqNumber = sequenceNumber;
+		sequenceNumber++;
+		sendFrame->frameType = DATA_FRAME;
+		if (endPhoto)
+			sendFrame->EOP = END_PACKET;
+		else 
+			sendFrame->EOP = CONT_PACKET;
+		strncpy(sendFrame->payload, framePayload, counter+1);
+		sendFrame->ED = errorDetectCreate(sendFrame->seqNumber, sendFrame->frameType, sendFrame->EOP, sendFrame->payload);
+		phl_send(*sendFrame);
+	}
+	//------------------------------------------------------------STILL NEED TO ADD TIMER, WAITING, AND ACK --------------------------------
 	//For each payload
 		//Create frame
 		//Start_timer
@@ -207,10 +284,9 @@ int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serv
 		memset(&serverAddress, 0, sizeof(serverAddress));  																			//Fill struct with zeroes
 		serverAddress.sin_family  = AF_INET;    																					//Set Internet address family
 		serverAddress.sin_addr.s_addr =inet_addr(inet_ntoa((struct in_addr) ((struct sockaddr_in *)(p->ai_addr))->sin_addr));  		//Set server IP address using result from getaddrinfo()
-		serverAddress.sin_port = htons(serverPort);																					//Set server port. Use well-known port due to getaddrinfo() returning port 80																															//Connect to echo server
-		cout<<"Attempting connect.\nServer name: "<<serverName<<std::endl;
+		serverAddress.sin_port = htons(serverPort);																					//Set server port. Use well-known port due to getaddrinfo() returning port 80			
 		int connectRes;
-		if ((connectRes = connect(*sock, p->ai_addr, p->ai_addrlen)) != 0) 											//Test that connection is successful
+		if ((connectRes = connect(*sock, p->ai_addr, p->ai_addrlen)) != 0) 															//Test that connection is successful
 		{
 			if (DEBUG)
 			{
@@ -225,10 +301,10 @@ int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serv
 	return -2; //Should not reach this point
 }
 
-void phl_send(frame fr)																														//Alexi Kessler
+void phl_send(frame fr)																												//Alexi Kessler
 {
-	//Send over TCP connection
-	//phl_recv()
+	cout<<"Physical layer received frame:"<<std::endl;
+	printFrame(fr);
 }
 
 void phl_recv()																														//Alexi Kessler
@@ -244,6 +320,11 @@ void phl_close(int sock)																											//Alexi Kessler
 void waitEvent()
 {
 	
+}
+
+short int errorDetectCreate(short int seq, char frameType, char EOP, char payload[])
+{
+	return 0;
 }
 
 void testSendMessage(int sockfd)																									//Alexi Kessler
@@ -302,3 +383,17 @@ void testSendFrame (int sockfd)																										//Alexi Kessler
 		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
 }
 
+void printFrame (frame fr)
+{
+	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "
+		<<fr.EOP<<std::endl;
+	cout<<"Payload:"<<std::endl;
+	int i = 0;
+	
+	while (i < MAX_FRAME_PAYLOAD)
+	{
+		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
+		i++;
+	}
+	cout<<"Error Detection: "<<fr.ED<<std::endl;
+}
