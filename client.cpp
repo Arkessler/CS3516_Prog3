@@ -14,14 +14,16 @@
 #include <errno.h>
 
 #define DEFAULT_PORT 1199
-#define CHUNK_SIZE 256
-#define PACKET_SIZE CHUNK_SIZE+1
+#define MAX_SIZE_PACKET 257
+#define MAX_SIZE_PACKET_PAYLOAD 256
+#define PACKET_SIZE MAX_SIZE_PACKET_PAYLOAD+1
 #define MAX_FRAME_PAYLOAD 130
 #define MAX_FRAME_SIZE 200
 #define DATA_FRAME 'D'
 #define ACK_FRAME 'A'
-#define END_PACKET 'P'
+#define END_PACKET 'E'
 #define CONT_PACKET 'C'
+#define MAX_WAIT_TIME 750
 
 using namespace std;
 
@@ -47,6 +49,7 @@ class frame
 //Debug variable(s)
 bool DEBUG = true;
 //Send global var(s)
+int sockfd = 0;
 short int sequenceNumber = 0;
 //Misc global var(s)
 std::ofstream fileStream;
@@ -58,16 +61,17 @@ void nwl_recv();
 void dll_send(packet pkt);
 void dll_recv();
 //Physical layer functions
-int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName);
+int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName);
 void phl_send(frame fr);
 void phl_recv();
-void phl_close(int sock);
+void phl_close();
 //Misc functions
 void DieWithError(char *errorMessage);
 short int errorDetectCreate(short int seq, char frameType, char EOP, char payload[]);
-void testSendMessage(int sockfd);
-void testSendFrame(int sockfd);
+void testSendMessage();
+void testSendFrame();
 void printFrame (frame fr);
+int waitEvent();
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -78,7 +82,6 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	int numPhoto = 0;
 	
 	//Connection variables
-	int sockfd;
 	struct sockaddr_in serverAddress;
 	unsigned short portNumber = DEFAULT_PORT; 																						//Assuming use of "well-known" port
 	
@@ -96,16 +99,16 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	
 	std::string readLoc; 
 
-	int connectRes = phl_connect(&sockfd, serverAddress, portNumber, serverName);
+	int connectRes = phl_connect(serverAddress, portNumber, serverName);
 	if (DEBUG)
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 	
-	testSendMessage(sockfd);
-	//testSendFrame(1099); --
+	testSendMessage();
+	//testSendFrame(); 
 	
 	for (count = 0; count<numPhoto; count++)
 	{
-		//Set new readLoc
+																																	//Set new readLoc
 		readLoc = "photo";
 		manipStream<<cId;																											//Convert cId to string
 		readLoc.append(manipStream.str());
@@ -119,14 +122,13 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 		nwl_read(readLoc);																											//Have network layer read file
 	}
 	
-	phl_close(sockfd);
+	phl_close();
 }
 
 void nwl_read(std::string fileName)																									//Alexi Kessler
 {
 	std::ifstream stream (fileName.c_str(), std::ifstream::binary);
 	char buf[300];
-	char currChar;
 	
 	int counter = 0;
 	if (DEBUG)
@@ -145,7 +147,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			counter++;
 			if (counter > 1)
 				DieWithError("Done test");
-			//Wait on nwl_ACK
+			//TO DO: Wait on nwl_ACK
 		} 
 		else 
 		{
@@ -157,7 +159,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			dll_send(*sendPacket);
 			cout<<"SENT A SINGLE PACKET"<<std::endl;
 			DieWithError("Done test");
-			//Wait on new_ACK
+			//TO DO: Wait on new_ACK
 		}
 		memset(buf, 0, 300);
 	}
@@ -172,8 +174,9 @@ void nwl_recv()																														//Alexi Kessler
 void dll_send(packet pkt)																											//Alexi Kessler
 {
 	bool endPhoto;
-	char givenArray[CHUNK_SIZE];
+	char givenArray[MAX_SIZE_PACKET_PAYLOAD];
 	char framePayload[MAX_FRAME_PAYLOAD];
+	
 	if (pkt.endPhoto == END_PACKET)
 	{
 		endPhoto = true;
@@ -182,18 +185,17 @@ void dll_send(packet pkt)																											//Alexi Kessler
 	{
 		endPhoto = false;
 	}
-	strncpy(givenArray, pkt.payload, CHUNK_SIZE);
+	strncpy(givenArray, pkt.payload, MAX_SIZE_PACKET_PAYLOAD);
+	
 	int i = 0;
 	int counter = 0;
-	
-	while (i < CHUNK_SIZE)
+	while (i < MAX_SIZE_PACKET_PAYLOAD)
 	{
-		if (DEBUG)
-			cout<<"\ni: "<<i<<" counter: "<<counter<<std::endl;
+		//if (DEBUG)
+			//cout<<"\ni: "<<i<<" counter: "<<counter<<std::endl;
 		if (counter < MAX_FRAME_PAYLOAD)
 		{
-			if (DEBUG)
-				cout<<"Copying "<<i<<" character of array"<<std::endl;
+			
 			framePayload[counter] = givenArray[i];
 			counter++;
 		}
@@ -212,6 +214,9 @@ void dll_send(packet pkt)																											//Alexi Kessler
 			sendFrame->ED = errorDetectCreate(sendFrame->seqNumber, sendFrame->frameType, sendFrame->EOP, sendFrame->payload);
 			phl_send(*sendFrame);
 			counter = 0;
+			int waitRes = waitEvent();
+			if (waitRes == 0)
+				cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
 		}
 		i++;
 	}
@@ -230,10 +235,22 @@ void dll_send(packet pkt)																											//Alexi Kessler
 		strncpy(sendFrame->payload, framePayload, counter+1);
 		sendFrame->ED = errorDetectCreate(sendFrame->seqNumber, sendFrame->frameType, sendFrame->EOP, sendFrame->payload);
 		phl_send(*sendFrame);
+		
+		int waitRes = waitEvent();
+			if (waitRes == 0)							//Time out
+			{
+				cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
+				//Retransmit
+				//Start new timer
+			}
+			else if (waitRes > 0)
+			{
+				//frame = phl_recv()
+				//Check if ack or frame
+			}
 	}
 	//------------------------------------------------------------STILL NEED TO ADD TIMER, WAITING, AND ACK --------------------------------
-	//For each payload
-		//Start_timer
+	//TO DO: For each payload
 		//Phl_recv(ack/frm)
 		//If ack
 			//If ok 
@@ -250,7 +267,7 @@ void dll_recv()            																											//Alexi Kessler
 	
 }
 
-int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName)							//Alexi Kessler
+int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName)										//Alexi Kessler
 {
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
@@ -270,10 +287,9 @@ int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serv
 	}
 																							
 	for(p = servinfo; p != NULL; p = p->ai_next)
-	{															//loop through all the results 		
-		
+	{															
 		cout<<"Checking getaddrinfo result"<<std::endl;
-		if ((*sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
+		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
 		{
 			perror("socket");
 			continue;
@@ -283,7 +299,7 @@ int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serv
 		serverAddress.sin_addr.s_addr =inet_addr(inet_ntoa((struct in_addr) ((struct sockaddr_in *)(p->ai_addr))->sin_addr));  		//Set server IP address using result from getaddrinfo()
 		serverAddress.sin_port = htons(serverPort);																					//Set server port. Use well-known port due to getaddrinfo() returning port 80			
 		int connectRes;
-		if ((connectRes = connect(*sock, p->ai_addr, p->ai_addrlen)) != 0) 															//Test that connection is successful
+		if ((connectRes = connect(sockfd, p->ai_addr, p->ai_addrlen)) != 0) 															//Test that connection is successful
 		{
 			if (DEBUG)
 			{
@@ -301,8 +317,8 @@ int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serv
 void phl_send(frame fr)																												//Alexi Kessler
 {
 	cout<<"Physical layer received frame:"<<std::endl;
-	printFrame(fr);
-	//Still need to actually send, this is just for confirmation that it is indeed received.
+	//printFrame(fr);
+	//TO DO: Still need to actually send, this is just for confirmation that it is indeed received.
 }
 
 void phl_recv()																														//Alexi Kessler
@@ -310,14 +326,35 @@ void phl_recv()																														//Alexi Kessler
 	//recv() wait
 }
 	
-void phl_close(int sock)																											//Alexi Kessler
+void phl_close()																													//Alexi Kessler
 {
-	close(sock);
+	close(sockfd);
 }
 
-void waitEvent()																													//Alexi Kessler
+int waitEvent()																													//Alexi Kessler
 {
+	int returnVal;
+	fd_set readset;
+	struct timeval tv;
 	
+	FD_ZERO (&readset);
+	FD_SET (sockfd, &readset);
+	
+	tv.tv_sec = 5;
+	tv.tv_usec = MAX_WAIT_TIME;
+	
+	returnVal = select(1, &readset, NULL, NULL, &tv);
+	
+	if (returnVal < 0)
+	{
+		//TO DO: ERROR HANDLING
+	}
+	else if (returnVal > 0)
+	{
+		FD_ZERO (&readset);
+	}
+	
+	return returnVal;
 }
 
 short int errorDetectCreate(short int seq, char frameType, char EOP, char payload[])												//Alexi Kessler
@@ -325,8 +362,11 @@ short int errorDetectCreate(short int seq, char frameType, char EOP, char payloa
 	return 0;
 }
 
-void testSendMessage(int sockfd)																									//Alexi Kessler
+void testSendMessage()																												//Alexi Kessler
 {
+	int bytesReceived;
+	char buffer[100];
+	
 	cout<<"Testing send message"<<std::endl;
 	char * sendChar = "Test message. It worked!!\n";
 	int sendLength = strlen(sendChar);
@@ -337,9 +377,13 @@ void testSendMessage(int sockfd)																									//Alexi Kessler
 		cout<<"Send failed, different number of bytes sent. Expected: "<<sendLength<<" Sent: "<<sendRes<<std::endl;
 	else
 		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
+	if ((bytesReceived = recv(sockfd, buffer, 100  - 1, 0)) <= 0)
+		DieWithError("Received failed");
+	else
+		cout<<"Received: "<<buffer<<std::endl;
 }
 
-void testSendFrame (int sockfd)																										//Alexi Kessler
+void testSendFrame ()																												//Alexi Kessler
 {
 	if (DEBUG)
 		cout<<"Buidling frame"<<std::endl;
@@ -350,12 +394,11 @@ void testSendFrame (int sockfd)																										//Alexi Kessler
 	cout<<"Setting payload values"<<std::endl;
 	test->payload[0] = '3';
 	test->payload[1] = '5';
-	cout<<"Set payload values"<<std::endl;
 	test->ED = 12345;
 	
 	char tempBuf[10];
 	char sendChar[MAX_FRAME_SIZE];
-	sprintf(sendChar, "%hi %c %c ", test->seqNumber, test->frameType, test->EOP);
+	sprintf(sendChar, "%hi%c%c", test->seqNumber, test->frameType, test->EOP);
 	int i = 0;
 	while ( (test->payload[i] )!='0')
 	{
@@ -364,7 +407,7 @@ void testSendFrame (int sockfd)																										//Alexi Kessler
 		i++;
 	}
 	
-	sprintf(tempBuf, " %hi", test->	ED);
+	sprintf(tempBuf, "%hi", test->ED);
 	strcat(sendChar, tempBuf);
 	
 	if (DEBUG)
@@ -390,12 +433,13 @@ void printFrame (frame fr)																											//Alexi Kessler
 	
 	while (i < MAX_FRAME_PAYLOAD)
 	{
-		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
+		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" ascii value:"<<(int)fr.payload[i]<<std::endl;
 		i++;
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
 }
 
+/*
 char buf[148];
 int i = 0;
 int place = 0;
@@ -412,3 +456,5 @@ while (i< place+SIZE_FRAMETYPE)
 	
 while (i< place+SIZE_PAYLOAD)
 	payload[i-startPayload] = buf[i];
+*/
+
