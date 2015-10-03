@@ -80,7 +80,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	//Connection variables
 	int sockfd;
 	struct sockaddr_in serverAddress;
-	unsigned short portNumber = DEFAULT_PORT; 																								//Assuming use of "well-known" port
+	unsigned short portNumber = DEFAULT_PORT; 																						//Assuming use of "well-known" port
 	
 	//Misc variables
 	std::stringstream manipStream;
@@ -101,7 +101,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 	
 	testSendMessage(sockfd);
-	//testSendFrame(1099);
+	//testSendFrame(1099); --
 	
 	for (count = 0; count<numPhoto; count++)
 	{
@@ -116,8 +116,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 		readLoc.append(".jpg");
 		if (DEBUG)
 			cout<< "New read location: "<<readLoc<<std::endl;
-		//Have app layer read file
-		nwl_read(readLoc);
+		nwl_read(readLoc);																											//Have network layer read file
 	}
 	
 	phl_close(sockfd);
@@ -170,7 +169,7 @@ void nwl_recv()																														//Alexi Kessler
 	
 }
 
-void dll_send(packet pkt)																														//Alexi Kessler
+void dll_send(packet pkt)																											//Alexi Kessler
 {
 	bool endPhoto;
 	char givenArray[CHUNK_SIZE];
@@ -234,9 +233,7 @@ void dll_send(packet pkt)																														//Alexi Kessler
 	}
 	//------------------------------------------------------------STILL NEED TO ADD TIMER, WAITING, AND ACK --------------------------------
 	//For each payload
-		//Create frame
 		//Start_timer
-		//Phl_send(frm)
 		//Phl_recv(ack/frm)
 		//If ack
 			//If ok 
@@ -253,7 +250,7 @@ void dll_recv()            																											//Alexi Kessler
 	
 }
 
-int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName)
+int phl_connect(int *sock, struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName)							//Alexi Kessler
 {
 	struct addrinfo hints, *servinfo, *p;
 	int rv;
@@ -305,6 +302,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 {
 	cout<<"Physical layer received frame:"<<std::endl;
 	printFrame(fr);
+	//Still need to actually send, this is just for confirmation that it is indeed received.
 }
 
 void phl_recv()																														//Alexi Kessler
@@ -317,12 +315,12 @@ void phl_close(int sock)																											//Alexi Kessler
 	close(sock);
 }
 
-void waitEvent()
+void waitEvent()																													//Alexi Kessler
 {
 	
 }
 
-short int errorDetectCreate(short int seq, char frameType, char EOP, char payload[])
+short int errorDetectCreate(short int seq, char frameType, char EOP, char payload[])												//Alexi Kessler
 {
 	return 0;
 }
@@ -383,7 +381,7 @@ void testSendFrame (int sockfd)																										//Alexi Kessler
 		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
 }
 
-void printFrame (frame fr)
+void printFrame (frame fr)																											//Alexi Kessler
 {
 	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "
 		<<fr.EOP<<std::endl;
