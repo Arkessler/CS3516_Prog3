@@ -143,7 +143,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			strncpy(sendPacket->payload, buf, 256);
 			dll_send(*sendPacket);
 			counter++;
-			if (counter > 2)
+			if (counter > 1)
 				DieWithError("Done test");
 			//Wait on nwl_ACK
 		} 
@@ -395,3 +395,20 @@ void printFrame (frame fr)																											//Alexi Kessler
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
 }
+
+char buf[148];
+int i = 0;
+int place = 0;
+int startPayload = SIZE_FRAMETYPE+SIZE_SEQUENCE_NUMBER;
+char *seq;
+char *frameType;
+char *ED;
+char payload[130];
+while (i < place+SIZE_SEQUENCE_NUMBER)
+	strcat(seq, &buf[i]);
+	i++;
+	place++;
+while (i< place+SIZE_FRAMETYPE)
+	
+while (i< place+SIZE_PAYLOAD)
+	payload[i-startPayload] = buf[i];
