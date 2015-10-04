@@ -30,12 +30,33 @@ using namespace std;
 
 
 #define MAXPENDING 5 /* Maximum outstanding connection requests */
-#define BUFFSIZE 32   /* Size of receive buffer */
+#define BUFFSIZE 150   /* Size of receive buffer */
 #define SERVPORT 1199	//Maximun ammount of entries on the list
+#define FRAME_TYPE_SIZE 1
+#define SEQ_NUM_SIZE 2
+#define EOP_SIZE 1
+#define PAYLOAD_SIZE 130
+#define ERRD_SIZE 1
 
+class packet
+{
+	public:
+		char payload[256]; 																											//256 bytes long
+		char endPhoto;																												//1 byte long end of photo indicator
+};
+
+class frame
+{
+	public:
+		short int seqNumber; 																										//2 bytes long
+		char frameType; 																											//1 byte long
+		char EOP;																													//1 byte long 
+		char payload[130];																											//130 bytes long
+		short int ED;																												//2 bytes long
+};
 
 void DieWithError(char *errorMessage); /* Error handling function */
-
+frame* read_frame(char* buffer);
 
 int main(int argc, char *argv[]){ 
  int bytes_r;
@@ -47,8 +68,9 @@ int main(int argc, char *argv[]){
  struct sockaddr_in ClntAddr; 		/* Client address */
  unsigned short ServPort; 			/* Server port */
  unsigned int clntLen;
-
-	ServPort = SERVPORT;			//If no port is specified, use this one that is generally available and matches with the one of the client program
+ 
+ frame* inc_frame = new frame();
+	ServPort = SERVPORT;			
 
  /* Create socket for incoming connections */
  if ((servSock = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
@@ -93,12 +115,14 @@ for (;;) /* Run forever */{
                         cout<< "Error in recv()";
 
                 buffer[bytes_r] = '\0';
-
+			
                 //Send AK
 
                 if (send(clntSock, "ACK", 5, 0) == -1)
                         perror("send");
-
+				
+				
+				inc_frame = read_frame(buffer);
                 close(clntSock);
                 exit(0);
         }
@@ -119,134 +143,51 @@ void DieWithError(char *errorMessage)
     exit(1);
 } 
 
-/*
-void getCommand(char *buffer, char *storeBuf){
-        int wordLen = 0;                                                        //Loop counter
-        while(buffer[wordLen] != 32){
-                wordLen++;}
-        strncpy(storeBuf, buffer, wordLen);
-        storeBuf[wordLen] = '\0';
-}
-
-void add(char* id, char* fname, char* lname, char* gender, char* location){	
-	int i;
-	int j;
-	entry temp;
-	for(i = 0; i < LSIZE; i++){
-		temp = entry[i];
-		if(strcmp(temp->id, id) == 0){
-		//Person already in list
-		return;
-		}
+frame* read_frame(char* buffer){
+	frame* new_frame = new frame();
+	
+	int i = 0;
+	int place = 0;
+	int startPayload = FRAME_TYPE_SIZE+SEQ_NUM_SIZE+EOP_SIZE;
+	char *seq_num;
+	char *frameType;
+	char* EOP;
+	char *ED;
+	char payload[130];
+	while (i < place+SEQ_NUM_SIZE){
+		strncat(seq_num, &buffer[i], 1);
+		i++;
+		place++;	
 	}
-		//Add
-		&temp->id = id;
-		&temp->fname = fname;
-		&temp->lname = lname;
-		&temp->gender = gender;
-		&temp->location = location;	
+	
+	while (i< place+FRAME_TYPE_SIZE){
+		strncat(frameType, &buffer[i], 1);
+		i++;
+		place++;
+	}
 		
-	
-		//Sort
-		for (i = 0; i < LSIZE; i++) {
-      			for (j = 0; j < LSIZE - 1; j++) {
-         			if (strcasecmp(entry[j].lname, entry[j + 1].lname) > 0) {
-            				memcpy(temp, entry[j], sizeof(entry));
-					memcpy(entry[j], entry[j +1], sizeof(entry));
-					memcpy(entry[j+1], temp, sizeof(entry));
-				}
-			}
-		}		
-}
-
-
-void update(char* id, char* fname, char* lname, char* gender, char* location){
-        entry temp;
-	temp = malloc(sizeof(entry));
-	for(i = 0; i < LSIZE; i++){
-                memcpy(temp,entry[i], sizeof(entry));
-                if(strcmp(temp->id, id) == 0){
-                //Person already in list
-                &temp->id = id;
-                &temp->fname = fname;
-                &temp->lname = lname;
-                &temp->gender = gender;
-                &temp->location = location;
-		 return;
-                }
-	
-		else(){
-		//entry not found
-		}
+	while (i < place+PAYLOAD_SIZE){
+		strncpy(&payload[i-startPayload], &buffer[i], 1);
+		i++;
+		place++;
 	}
-	free(temp);	
-}
-
-void remove(char* id){
-	int i;
-	entry temp;
-	temp = malloc(sizeof(entry));
-        for(i = 0; i < LSIZE; i++){
-                temp = entry[i];
-                if(strcmp(temp->id, id) == 0){
-			memset(&temp, 0, sizeof(entry));
-                	return;
-		}
-	}
-free(temp);
-}
-
-char* find(char* fname, char* lname){
-	int i;
-	entry temp;
-	temp = malloc(sizeof(entry));
 	
-	for(i = 0; i < LSIZE; i++){
-	        temp = entry[i];
-                
-		if(strcmp(temp->lname, lname) == 0){
-			if(strcmp(temp->fname, fname) == 0){
-				char x = " ";
-				int strlen = strlen(x) + 1;
-				char *temp = strcat(fname, x, strlen);
-				char *buffer = malloc(sizeof(char) * (strlen(fname) + strlen(lname) + 1));				
-				return buffer = strncat(temp, lname, (strlen(lnane) + 1));  
-                	}
-		}		
-
+	while(i < place+ERRD_SIZE){
+		strncat(ED, &buffer[i], 1);
+		i++;
+		place++;
 	}
-	free(temp);
+	
+	new_frame->seqNumber = atoi(seq_num);
+	
+	strncpy(&new_frame->frameType, frameType, FRAME_TYPE_SIZE);
+	
+	strncpy(&new_frame->EOP, EOP, EOP_SIZE);
+	
+	strncpy(new_frame->payload, payload, PAYLOAD_SIZE - 1);
+	new_frame->payload[PAYLOAD_SIZE] = '\0';
+	
+	new_frame->ED = atoi(ED);
+
+	return new_frame;	
 }
-
-void locate(char* location){
-        int i;
-        entry temp;
-        temp = malloc(sizeof(entry));
-
-        for(i = 0; i < LSIZE; i++){
-                temp = entry[i];
-
-                if(strcasecmp(temp->location, location) == 0){
-
-}
-
-void list(char* start, char* finish){
-
-}
-
-void sortFunc(struct entry){
-	entry temp;
-	temp = malloc(sizeof(entry));
-	int i, j;
-                for (i = 0; i < LSIZE; i++) {
-                        for (j = 0; j < LSIZE - 1; j++) {
-                                if (strcasecmp(entry[j].lname, entry[j + 1].lname) > 0) {
-                                        memcpy(temp, entry[j], sizeof(entry));
-                                        memcpy(entry[j], entry[j +1], sizeof(entry));
-                                        memcpy(entry[j+1], temp, sizeof(entry));
-                                }
-                        }
-                }
-	free(temp);
-}
-*/
