@@ -38,6 +38,8 @@ using namespace std;
 #define PAYLOAD_SIZE 130
 #define ERRD_SIZE 1
 
+#define MAX_FRAME_PAYLOAD 130
+
 class packet
 {
 	public:
@@ -57,6 +59,7 @@ class frame
 
 void DieWithError(char *errorMessage); /* Error handling function */
 frame* read_frame(char* buffer);
+void printFrame (frame fr);
 
 int main(int argc, char *argv[]){ 
  int bytes_r;
@@ -123,6 +126,8 @@ for (;;) /* Run forever */{
 				
 				
 				inc_frame = read_frame(buffer);
+				printFrame(*inc_frame);
+				
                 close(clntSock);
                 exit(0);
         }
@@ -190,4 +195,19 @@ frame* read_frame(char* buffer){
 	new_frame->ED = atoi(ED);
 
 	return new_frame;	
+}
+
+void printFrame (frame fr)																											//Alexi Kessler
+{
+	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "
+		<<fr.EOP<<std::endl;
+	cout<<"Payload:"<<std::endl;
+	int i = 0;
+	
+	while (i < MAX_FRAME_PAYLOAD)
+	{
+		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
+		i++;
+	}
+	cout<<"Error Detection: "<<fr.ED<<std::endl;
 }
