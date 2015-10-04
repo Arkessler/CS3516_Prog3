@@ -103,8 +103,8 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	if (DEBUG)
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 	
-	testSendMessage();
-	//testSendFrame(); 
+	//testSendMessage();
+	testSendFrame(); 
 	
 	for (count = 0; count<numPhoto; count++)
 	{
@@ -154,6 +154,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			cout<<"Read less than 256 bytes."<<std::endl;
 			packet * sendPacket = new packet();
 			
+			//TO DO: Test End of Packet/End of photo
 			sendPacket->endPhoto = END_PACKET;
 			strncpy(sendPacket->payload, buf, (size_t)(stream.gcount()));
 			dll_send(*sendPacket);
@@ -217,6 +218,7 @@ void dll_send(packet pkt)																											//Alexi Kessler
 			int waitRes = waitEvent();
 			if (waitRes == 0)
 				cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
+			//TO DO: Add wait handling from below
 		}
 		i++;
 	}
@@ -316,7 +318,7 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 
 void phl_send(frame fr)																												//Alexi Kessler
 {
-	cout<<"Physical layer received frame:"<<std::endl;
+	cout<<"Physical layer received frame"<<std::endl;
 	//printFrame(fr);
 	//TO DO: Still need to actually send, this is just for confirmation that it is indeed received.
 }
@@ -340,7 +342,7 @@ int waitEvent()																													//Alexi Kessler
 	FD_ZERO (&readset);
 	FD_SET (sockfd, &readset);
 	
-	tv.tv_sec = 5;
+	tv.tv_sec = 2;
 	tv.tv_usec = MAX_WAIT_TIME;
 	
 	returnVal = select(1, &readset, NULL, NULL, &tv);
@@ -438,23 +440,3 @@ void printFrame (frame fr)																											//Alexi Kessler
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
 }
-
-/*
-char buf[148];
-int i = 0;
-int place = 0;
-int startPayload = SIZE_FRAMETYPE+SIZE_SEQUENCE_NUMBER;
-char *seq;
-char *frameType;
-char *ED;
-char payload[130];
-while (i < place+SIZE_SEQUENCE_NUMBER)
-	strcat(seq, &buf[i]);
-	i++;
-	place++;
-while (i< place+SIZE_FRAMETYPE)
-	
-while (i< place+SIZE_PAYLOAD)
-	payload[i-startPayload] = buf[i];
-*/
-
