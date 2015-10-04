@@ -116,16 +116,20 @@ for (;;) /* Run forever */{
                 close(servSock); // child doesn't need the listener
                 if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
                         cout<< "Error in recv()";
-
+				
                 buffer[bytes_r] = '\0';
-			
+				cout<<"Bytes recieved: "<<bytes_r<<std::endl;
+                cout<<"Buffer:\n"<<buffer<<std::endl;
                 //Send AK
-
+				
                 if (send(clntSock, "ACK", 5, 0) == -1)
                         perror("send");
 				
 				
 				inc_frame = read_frame(buffer);
+				
+				cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
+				
 				printFrame(*inc_frame);
 				
                 close(clntSock);
@@ -159,29 +163,43 @@ frame* read_frame(char* buffer){
 	char* EOP;
 	char *ED;
 	char payload[130];
-	while (i < place+SEQ_NUM_SIZE){
-		strncat(seq_num, &buffer[i], 1);
-		i++;
-		place++;	
-	}
 	
+	cout<<"Parsing sequence number...\n";
+	while (i < place+SEQ_NUM_SIZE){
+		cout<<i<<std::endl;
+		cout<<"Starting copy..."<<std::endl;
+		strncat(seq_num, &buffer[i], 1);
+		i++;	
+	}
+	cout<<"Parsed sequence number...\n";
+	
+	place+=i;
+	
+	cout<<"Parsing frame type...\n";
 	while (i< place+FRAME_TYPE_SIZE){
 		strncat(frameType, &buffer[i], 1);
 		i++;
-		place++;
 	}
-		
+	cout<<"Parsed frame type...\n";
+	
+	place+=i;
+	
+	cout<<"Parsing payload...\n";
 	while (i < place+PAYLOAD_SIZE){
 		strncpy(&payload[i-startPayload], &buffer[i], 1);
 		i++;
-		place++;
 	}
+	cout<<"Parsed payload...\n";
 	
+	place+=i;
+	
+	cout<<"Parsing Error Detection...\n";
 	while(i < place+ERRD_SIZE){
 		strncat(ED, &buffer[i], 1);
 		i++;
-		place++;
 	}
+	cout<<"Parsed Error Detection...\n";
+	
 	
 	new_frame->seqNumber = atoi(seq_num);
 	
