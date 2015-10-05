@@ -157,36 +157,56 @@ frame* read_frame(char* buffer){
 	
 	int i = 0;
 	int place = 0;
-	int startPayload = FRAME_TYPE_SIZE+SEQ_NUM_SIZE+EOP_SIZE;
-	char *seq_num;
-	char *frameType;
-	char* EOP;
-	char *ED;
+	int startFrameType = SEQ_NUM_SIZE;
+	int startEOP = startFrameType + FRAME_TYPE_SIZE;
+	int startPayload = startEOP + EOP_SIZE;
+	char seq_num[SEQ_NUM_SIZE + 1];
+	int seq_num_temp;
+	int ED_temp;
+	char frameType;
+	char EOP;
+	char ED[ERRD_SIZE];
 	char payload[130];
 	
 	cout<<"Parsing sequence number...\n";
 	while (i < place+SEQ_NUM_SIZE){
-		cout<<i<<std::endl;
+		cout<<"Value of i: "<<i<<"\nValue of place: "<<place<<"\nValue of SEQ_NUM: "<<SEQ_NUM_SIZE<<std::endl;
 		cout<<"Starting copy..."<<std::endl;
-		strncat(seq_num, &buffer[i], 1);
+		
+		//if(i == 0){
+		strncpy(&seq_num[i], &buffer[i], 1);
+		//}
+		//else{
+			//strncat(&seq_num, &buffer[i], 1);
+		//}
+		
 		i++;	
 	}
-	cout<<"Parsed sequence number...\n";
+	seq_num[SEQ_NUM_SIZE] = '\0';
+	
+	cout<<"Parsed sequence number: "<<seq_num<<std::endl;
 	
 	place+=i;
 	
 	cout<<"Parsing frame type...\n";
 	while (i< place+FRAME_TYPE_SIZE){
-		strncat(frameType, &buffer[i], 1);
+		strncat(&new_frame->frameType, &buffer[i], 1);
 		i++;
 	}
-	cout<<"Parsed frame type...\n";
+	cout<<"Parsed frame type: "<<frameType<<std::endl;
 	
 	place+=i;
 	
+	cout<<"Parsing EOP...\n";
+	while (i < place+EOP_SIZE){
+		strncpy(&new_frame->EOP, &buffer[i], 1);
+		i++;
+	}
+	cout<<"Parsed EOP...\n";
+	
 	cout<<"Parsing payload...\n";
 	while (i < place+PAYLOAD_SIZE){
-		strncpy(&payload[i-startPayload], &buffer[i], 1);
+		strncat(&payload[i-startPayload], &buffer[i], 1);
 		i++;
 	}
 	cout<<"Parsed payload...\n";
@@ -198,20 +218,23 @@ frame* read_frame(char* buffer){
 		strncat(ED, &buffer[i], 1);
 		i++;
 	}
-	cout<<"Parsed Error Detection...\n";
+	cout<<"Parsed Error Detection: "<<ED<<std::endl;
 	
+	seq_num_temp = atoi(&seq_num);
+	cout<<"Sequence number: "<<seq_num_temp<<std::endl;
 	
 	new_frame->seqNumber = atoi(seq_num);
 	
-	strncpy(&new_frame->frameType, frameType, FRAME_TYPE_SIZE);
+	//strncpy(&new_frame->frameType, &frameType, FRAME_TYPE_SIZE);
 	
-	strncpy(&new_frame->EOP, EOP, EOP_SIZE);
+	//strncpy(&new_frame->EOP, &EOP, EOP_SIZE);
 	
-	strncpy(new_frame->payload, payload, PAYLOAD_SIZE - 1);
+	strncpy(new_frame->payload, payload, PAYLOAD_SIZE);
 	new_frame->payload[PAYLOAD_SIZE] = '\0';
 	
-	new_frame->ED = atoi(ED);
-
+	new_frame->ED = atoi(&ED);
+	
+	printFrame(*new_frame);
 	return new_frame;	
 }
 
@@ -228,4 +251,5 @@ void printFrame (frame fr)																											//Alexi Kessler
 		i++;
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
+
 }
