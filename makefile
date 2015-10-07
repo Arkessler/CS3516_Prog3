@@ -7,3 +7,5 @@ Client: client.cpp DieWithError.cpp
 Server: Server.cpp DieWithError.cpp
 	$(CC) -Wall Server.cpp -o Server
 
+clean:
+	rm -f client server
