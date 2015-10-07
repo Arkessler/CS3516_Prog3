@@ -17,7 +17,7 @@
 #define CHUNK_SIZE 256
 #define PACKET_SIZE CHUNK_SIZE+1
 #define MAX_FRAME_PAYLOAD 130
-#define MAX_FRAME_SIZE 200
+#define MAX_FRAME_SIZE 138
 #define DATA_FRAME 'D'
 #define ACK_FRAME 'A'
 #define END_PACKET 'E'
@@ -38,7 +38,8 @@ class frame
 	public:
 		short int seqNumber; 																										//2 bytes long
 		char frameType; 																											//1 byte long
-		char EOP;																													//1 byte long 
+		char EOP;																													//1 byte long
+		short int dataLength;																										//2 bytes long, used in case payload is not full 130 bytes
 		char payload[130];																											//130 bytes long
 		short int ED;																												//2 bytes long
 };
@@ -88,6 +89,12 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	std::stringstream manipStream;
 	
 	//------------------------------------------------------------------------INIT VARIABLES---------------------------------------------------------------------------
+	if (argc != 4)
+	{
+		cout<<"Proper usage is ./client [hostname] [client id] [number of photos to be read]"<<std::endl;
+		exit(3);
+	} 
+	
 	serverName = argv[1];
 	cId = atoi(argv[2]);
 	numPhoto = atoi(argv[3]);
@@ -102,8 +109,8 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	if (DEBUG)
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 	
-	testSendMessage();
-	//testSendFrame(); --
+	//testSendMessage();
+	testSendFrame(); 
 	
 	for (count = 0; count<numPhoto; count++)
 	{
@@ -145,7 +152,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			strncpy(sendPacket->payload, buf, 256);
 			dll_send(*sendPacket);
 			counter++;
-			if (counter > 2)
+			if (counter > 0)
 				DieWithError("Done test");
 			//Wait on nwl_ACK
 		} 
@@ -199,7 +206,7 @@ void dll_send(packet pkt)																											//Alexi Kessler
 			framePayload[counter] = givenArray[i];
 			counter++;
 		}
-		else
+		else																														//Filled a frame, send it along and start new frame
 		{
 			frame* sendFrame = new frame();
 			
@@ -210,6 +217,7 @@ void dll_send(packet pkt)																											//Alexi Kessler
 				sendFrame->EOP = END_PACKET;
 			else 
 				sendFrame->EOP = CONT_PACKET;
+			sendFrame->dataLength = counter;																						//Should be 130
 			strncpy(sendFrame->payload, framePayload, MAX_FRAME_PAYLOAD);
 			sendFrame->ED = 0; 																										//Placeholder, actual Error Detect Create takes place right before sending
 			phl_send(*sendFrame);
@@ -222,7 +230,7 @@ void dll_send(packet pkt)																											//Alexi Kessler
 		i++;
 	}
 	
-	if (counter!= 0)
+	if (counter!= 0)																												//Finished parsing packet, some data leftover. Put in frame
 	{
 		frame* sendFrame = new frame;
 			
@@ -233,8 +241,9 @@ void dll_send(packet pkt)																											//Alexi Kessler
 			sendFrame->EOP = END_PACKET;
 		else 
 			sendFrame->EOP = CONT_PACKET;
+		sendFrame->dataLength = counter;																							//Signifies how much leftover data was put into payload
 		strncpy(sendFrame->payload, framePayload, counter+1);
-		sendFrame->ED = 0; 																										//Placeholder, actual Error Detect Create takes place right before sending
+		sendFrame->ED = 0; 																											//Placeholder, actual Error Detect Create takes place right before sending
 		phl_send(*sendFrame);
 		int waitRes = waitEvent();
 			if (waitRes == 0)							//Time out
@@ -287,7 +296,7 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 	}
 																							
 	for(p = servinfo; p != NULL; p = p->ai_next)
-	{															//loop through all the results 		
+	{																																//loop through all the results 		
 		
 		cout<<"Checking getaddrinfo result"<<std::endl;
 		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
@@ -312,15 +321,43 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 		else
 			return 0;
 	}
-	return -2; //Should not reach this point
+	return -2; 																														//Should not reach this point
 }
 
 void phl_send(frame fr)																												//Alexi Kessler
 {
 	cout<<"Physical layer received frame:"<<std::endl;
 	printFrame(fr);
-	//Still need to actually send, this is just for confirmation that it is indeed received.
-}
+	
+	char tempBuf[10];																										
+	char sendChar[MAX_FRAME_SIZE];																									//Char* string to be sent with send()
+	sprintf(sendChar, "%hi%c%c%hi", fr.seqNumber, fr.frameType, fr.EOP, fr.dataLength);												//Start concatting everything into sendChar			
+	int i = 0;
+	while (i<fr.dataLength)
+	{
+		cout<<"Frame payload["<<i<<"]: "<<fr.payload[i]<<std::endl;
+		strcat(sendChar, &(fr.payload[i]));
+		i++;
+	}
+	
+	fr.ED = errorDetectCreate(sendChar, strlen(sendChar));
+	
+	sprintf(tempBuf, "%hi", fr.ED);
+	strcat(sendChar, tempBuf);
+	
+	if (DEBUG)
+	{
+		cout<<"String to send: "<<sendChar<<std::endl;
+	}
+	int sendLength = strlen(sendChar);
+	
+	int sendRes = 0;
+	sendRes = send(sockfd, sendChar, sendLength, 0);
+	if (sendRes != sendLength)
+		cout<<"Send failed, different number of bytes sent. Expected: "<<sendLength<<" Sent: "<<sendRes<<std::endl;
+	else
+		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
+}	//TO DO: Test this 
 
 void phl_recv()																														//Alexi Kessler
 {
@@ -358,46 +395,71 @@ int waitEvent()																														//Alexi Kessler
 	return returnVal;
 }
 
-short int errorDetectCreate(char* frameInfo, int infoLength)																		//Alexi Kessler
+short int errorDetectCreate(char* info, int infoLength)																		//Alexi Kessler
 {
-	int i = 0;
+	cout<<"Received buffer:"<<info<<std::endl;
+	char frameInfo[MAX_FRAME_SIZE];
+	strncpy(info, frameInfo, infoLength+1);
+	cout<<"Buffer after copy:"<<info<<std::endl;
+	int counter = 0;
 	char tempArray1[1];  																											//Two bytes
 	char tempArray2[1];																												//Two bytes
 	char XOR[1];																													//Two bytes
+	char tempChar1;
+	char tempChar2;
 	short int retVal;
-	while (i < infoLength)
+	while (counter < infoLength)
 	{
-		if (i == 0)
+		if (DEBUG)
+			cout<<"ErrorDetectCreate cycle with counter: "<<counter<<std::endl;
+		if (counter == 0)
 		{
-			tempArray1[0] = frameInfo[i];
-			tempArray1[1] = frameInfo[i + 1];
-			tempArray2[0] = frameInfo[i + 2];
-			tempArray2[1] = frameInfo[i + 3];
-			XOR[i] = (char)(tempArray1[i]^tempArray2[i]);
-			XOR[i + 1] = (char)(tempArray1[i + 1]^tempArray2[i+1]);
-			i+=2;
+			
+			
+			strncpy(&frameInfo[counter], tempArray1, 2);
+			strncpy(&frameInfo[counter + 2], tempArray2, 2);
+			tempChar1 = (char)(tempArray1[counter]^tempArray2[counter]);
+			tempChar2 = (char)(tempArray1[counter + 1]^tempArray2[counter+1]);
+			strncpy( &tempChar1, &XOR[counter], 1);
+			strncpy( &tempChar2, &XOR[counter+1], 1);
+			
+			cout<<"At end of initial fold, counter = "<<counter<<" and XOR = "<<XOR[counter]<<XOR[counter+1]<<std::endl;
+			counter+=2;
 		}
 		else																													
 		{
-			if ((infoLength-i) == 0) 	//NEEDS TESTING																				//Odd number length and at end 
+			if ((infoLength-counter) == 0) 	//NEEDS TESTING																				//Odd number length and at end 
 			{
-				tempArray1[0] = XOR[i];
-				tempArray1[1] = XOR[i + 1];
-				tempArray2[0] = frameInfo[i];
+				if (DEBUG)
+					cout<<"XORing last segment"<<std::endl;
+				strncpy(&XOR[0], tempArray1, 2);
+				strncpy(&frameInfo[counter], tempArray2, 1);
 				tempArray2[1] = 0;
-				XOR[i] = (char)(tempArray1[i]^tempArray2[i]);
-				XOR[i + 1] = (char)(tempArray1[i + 1]^tempArray2[i+1]);
-				i+=2;
+				tempChar1 = (char)(tempArray1[counter]^tempArray2[counter]);
+				tempChar2 = (char)(tempArray1[counter + 1]^tempArray2[counter+1]);
+				strncpy( &tempChar1, &XOR[0], 1);
+				strncpy( &tempChar2, &XOR[1], 1);
+				
+				counter+=2;
 			}
 			else
 			{
-				tempArray1[0] = XOR[i];
-				tempArray1[1] = XOR[i + 1];
-				tempArray2[0] = frameInfo[i];
-				tempArray2[1] = frameInfo[i + 1];
-				XOR[i] = (char)(tempArray1[i]^tempArray2[i]);
-				XOR[i + 1] = (char)(tempArray1[i + 1]^tempArray2[i+1]);
-				i+=2;
+				int tracker = counter;
+				
+				if (DEBUG)
+					cout<<"XORING segment starting at "<<counter<<std::endl;
+				
+				strncpy(&XOR[0], tempArray1, 2);
+				strncpy(&frameInfo[counter], tempArray2, 2);
+				tempChar1 = (char)(tempArray1[counter]^tempArray2[counter]);
+				tempChar2 = (char)(tempArray1[counter + 1]^tempArray2[counter+1]);
+				strncpy( &tempChar1, &XOR[0], 1);
+				strncpy( &tempChar2, &XOR[1], 1);
+				
+				counter+=2;
+	
+				if (counter == tracker)
+					DieWithError("Broken ED create");
 			}
 		}
 	}
@@ -431,25 +493,45 @@ void testSendFrame ()																												//Alexi Kessler
 	test->seqNumber = 12;
 	test->frameType = DATA_FRAME;
 	test->EOP = END_PACKET;
+	test->dataLength = 130;
+	
 	cout<<"Setting payload values"<<std::endl;
-	test->payload[0] = '3';
-	test->payload[1] = '5';
+	int counter = 0;
+	while (counter<test->dataLength)
+	{
+		test->payload[counter] = '9';
+		//cout<<"Set payload["<<counter<<"] to "<<test->payload[counter]<<std::endl;
+		counter++;
+	}
 	cout<<"Set payload values"<<std::endl;
 	
 	char tempBuf[10];
-	char sendChar[MAX_FRAME_SIZE];
-	sprintf(sendChar, "%hi %c %c ", test->seqNumber, test->frameType, test->EOP);
+	char sendChar[MAX_FRAME_SIZE*10];
+	char tempChar[1];
+	sprintf(sendChar, "%hi%c%c%hi", test->seqNumber, test->frameType, test->EOP, test->dataLength);
+	
 	int i = 0;
-	while ( (test->payload[i] )!='0')
+	while (i < (test->dataLength))
 	{
-		cout<<"Frame payload["<<i<<"]: "<<test->payload[i]<<std::endl;
-		strcat(sendChar, &(test->payload[i]));
-		i++;
+		tempChar[0] = test->payload[i];
+		tempChar[1] = '\0';
+		strcat(sendChar,  tempChar);
+		cout<<"After strcat i is: "<<i<<std::endl;
+		i+=1;
 	}
 	
+	if (DEBUG)
+	{
+		cout<<"String to send before adding ED: "<<sendChar<<std::endl;
+	}
+	
+	cout<<"Calling errorDetectCreate with sendChar and length: "<<strlen(sendChar)<<std::endl;
 	test->ED = errorDetectCreate(sendChar, strlen(sendChar));
 	
-	sprintf(tempBuf, " %hi", test->	ED);
+	sprintf(tempBuf, "%hi", test->ED);
+	
+	cout<<"Send char is: "<<sendChar<<std::endl;
+	cout<<"tempBuf if: "<<tempBuf<<std::endl;
 	strcat(sendChar, tempBuf);
 	
 	if (DEBUG)
