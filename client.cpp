@@ -395,15 +395,13 @@ int waitEvent()																														//Alexi Kessler
 	return returnVal;
 }
 
-short int errorDetectCreate(char* info, int infoLength)																		//Alexi Kessler
+short int errorDetectCreate(char* info, int infoLength)																				//Alexi Kessler
 {
-	cout<<"Received buffer:"<<info<<std::endl;
 	char frameInfo[MAX_FRAME_SIZE];
-	strncpy(info, frameInfo, infoLength+1);
-	cout<<"Buffer after copy:"<<info<<std::endl;
+	strncpy(frameInfo, info, infoLength+1);
 	int counter = 0;
-	char tempArray1[1];  																											//Two bytes
-	char tempArray2[1];																												//Two bytes
+	char tempArray1[10];  																											//Honestly, I don't know why these need more than two bytes. But
+	char tempArray2[10];																											//when allocating only two, they kept overwriting the counter
 	char XOR[1];																													//Two bytes
 	char tempChar1;
 	char tempChar2;
@@ -414,15 +412,18 @@ short int errorDetectCreate(char* info, int infoLength)																		//Alexi
 			cout<<"ErrorDetectCreate cycle with counter: "<<counter<<std::endl;
 		if (counter == 0)
 		{
-			
-			
-			strncpy(&frameInfo[counter], tempArray1, 2);
-			strncpy(&frameInfo[counter + 2], tempArray2, 2);
-			tempChar1 = (char)(tempArray1[counter]^tempArray2[counter]);
-			tempChar2 = (char)(tempArray1[counter + 1]^tempArray2[counter+1]);
-			strncpy( &tempChar1, &XOR[counter], 1);
-			strncpy( &tempChar2, &XOR[counter+1], 1);
-			
+			/*cout<<"Before first copy, frameInfo[0]: "<<frameInfo[0]<<" frameInfo[1]: "<<frameInfo[1]<<std::endl;
+			cout<<"tempArray1[0]: "<<tempArray1[0]<<" tempArray1[1]: "<<tempArray1[1]<<std::endl;
+			cout<<"counter: "<<counter<<std::endl;
+			cout<<"tempArray1 address"<<&tempArray1<<std::endl;
+			cout<<"frameInfo address"<<&frameInfo<<std::endl;
+			cout<<"counter address"<<&counter<<std::endl;*/
+			strncpy(tempArray1, &frameInfo[0], 2);
+			strncpy(tempArray2, &frameInfo[counter + 2], 2);
+			tempChar1 = (char)(tempArray1[0]^tempArray2[0]);
+			tempChar2 = (char)(tempArray1[1]^tempArray2[1]);
+			strncpy(&XOR[counter],  &tempChar1,  1);
+			strncpy(&XOR[counter+1], &tempChar2, 1);
 			cout<<"At end of initial fold, counter = "<<counter<<" and XOR = "<<XOR[counter]<<XOR[counter+1]<<std::endl;
 			counter+=2;
 		}
@@ -432,32 +433,27 @@ short int errorDetectCreate(char* info, int infoLength)																		//Alexi
 			{
 				if (DEBUG)
 					cout<<"XORing last segment"<<std::endl;
-				strncpy(&XOR[0], tempArray1, 2);
-				strncpy(&frameInfo[counter], tempArray2, 1);
+				strncpy(tempArray1, &XOR[0], 2);
+				strncpy(tempArray2, &frameInfo[counter],  1);
 				tempArray2[1] = 0;
-				tempChar1 = (char)(tempArray1[counter]^tempArray2[counter]);
-				tempChar2 = (char)(tempArray1[counter + 1]^tempArray2[counter+1]);
-				strncpy( &tempChar1, &XOR[0], 1);
-				strncpy( &tempChar2, &XOR[1], 1);
-				
+				tempChar1 = (char)(tempArray1[0]^tempArray2[0]);
+				tempChar2 = (char)(tempArray1[1]^tempArray2[1]);
+				strncpy(&XOR[0], &tempChar1, 1);
+				strncpy(&XOR[1], &tempChar2, 1);
 				counter+=2;
 			}
 			else
 			{
 				int tracker = counter;
-				
 				if (DEBUG)
 					cout<<"XORING segment starting at "<<counter<<std::endl;
-				
-				strncpy(&XOR[0], tempArray1, 2);
-				strncpy(&frameInfo[counter], tempArray2, 2);
-				tempChar1 = (char)(tempArray1[counter]^tempArray2[counter]);
-				tempChar2 = (char)(tempArray1[counter + 1]^tempArray2[counter+1]);
-				strncpy( &tempChar1, &XOR[0], 1);
-				strncpy( &tempChar2, &XOR[1], 1);
-				
+				strncpy(tempArray1, &XOR[0], 2);
+				strncpy(tempArray2, &frameInfo[counter],  2);
+				tempChar1 = (char)(tempArray1[0]^tempArray2[0]);
+				tempChar2 = (char)(tempArray1[1]^tempArray2[1]);
+				strncpy(&XOR[0], &tempChar1, 1);
+				strncpy(&XOR[1], &tempChar2, 1);
 				counter+=2;
-	
 				if (counter == tracker)
 					DieWithError("Broken ED create");
 			}
@@ -516,7 +512,7 @@ void testSendFrame ()																												//Alexi Kessler
 		tempChar[0] = test->payload[i];
 		tempChar[1] = '\0';
 		strcat(sendChar,  tempChar);
-		cout<<"After strcat i is: "<<i<<std::endl;
+	
 		i+=1;
 	}
 	
@@ -530,8 +526,6 @@ void testSendFrame ()																												//Alexi Kessler
 	
 	sprintf(tempBuf, "%hi", test->ED);
 	
-	cout<<"Send char is: "<<sendChar<<std::endl;
-	cout<<"tempBuf if: "<<tempBuf<<std::endl;
 	strcat(sendChar, tempBuf);
 	
 	if (DEBUG)
