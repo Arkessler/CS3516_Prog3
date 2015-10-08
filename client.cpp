@@ -27,14 +27,14 @@
 
 using namespace std;
 
-class packet
+class packet																														//Alexi Kessler
 {
 	public:
 		char payload[256]; 																											//256 bytes long
 		char endPhoto;																												//1 byte long end of photo indicator
 };
 
-class frame
+class frame																															//Alexi Kessler
 {
 	public:
 		short int seqNumber; 																										//2 bytes long

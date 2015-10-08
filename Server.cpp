@@ -53,6 +53,7 @@ class frame																															//Alexi Kessler
 		short int seqNumber; 																										//2 bytes long
 		char frameType; 																											//1 byte long
 		char EOP;																													//1 byte long 
+		short int dataLength;
 		char payload[130];																											//130 bytes long
 		short int ED;																												//2 bytes long
 };
