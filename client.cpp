@@ -60,7 +60,7 @@ std::ofstream fileStream;
 void nwl_read(std::string fileName);
 void nwl_recv();
 //Data Link layer functions
-void dll_send(packet pkt);
+frame dll_send(packet pkt);
 void dll_recv();
 //Physical layer functions
 int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName);
@@ -152,11 +152,14 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			
 			sendPacket->endPhoto = CONT_PACKET;
 			strncpy(sendPacket->payload, buf, 256);
-			dll_send(*sendPacket);
-			counter++;
-			if (counter > 0)
-				DieWithError("Done test");
-			//Wait on nwl_ACK
+			frame recvFrame = dll_send(*sendPacket);
+			//Wait on nwl_ACK (Process recvFrame)
+			if (DEBUG)
+			{
+				counter++;
+				if (counter > 0)
+					DieWithError("Done test");
+			}
 		} 
 		else 
 		{
@@ -165,10 +168,13 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			
 			sendPacket->endPhoto = END_PACKET;
 			strncpy(sendPacket->payload, buf, (size_t)(stream.gcount()));
-			dll_send(*sendPacket);
-			cout<<"SENT A SINGLE PACKET"<<std::endl;
-			DieWithError("Done test");
-			//Wait on new_ACK
+			frame recvFrame = dll_send(*sendPacket);
+			//Wait on nwl_ACK (Process recvFrame)
+			if (DEBUG)
+			{
+				cout<<"SENT A SINGLE PACKET"<<std::endl;
+				DieWithError("Done test");
+			}
 		}
 		memset(buf, 0, 300);
 	}
@@ -177,10 +183,10 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 
 void nwl_recv()																														//Alexi Kessler
 {
-	
+	//Waits for a 
 }
 
-void dll_send(packet pkt)																											//Alexi Kessler
+frame dll_send(packet pkt)																											//Alexi Kessler
 {
 	bool endPhoto;
 	char givenArray[CHUNK_SIZE];
@@ -256,8 +262,9 @@ void dll_send(packet pkt)																											//Alexi Kessler
 			}
 			else if (waitRes > 0)
 			{
-				//frame = phl_recv()
+				//frame = dll_recv()
 				//Check if ack or frame
+					//Check if right ack
 			}
 	}
 	//------------------------------------------------------------STILL NEED TO ADD TIMER, WAITING, AND ACK --------------------------------
@@ -271,6 +278,8 @@ void dll_send(packet pkt)																											//Alexi Kessler
 		//If frm
 			//return nwl_ack
 	//Wait on nwl_ack
+	frame * emptyFrame = new frame();				//This is just for compilaiton purposes
+	return *emptyFrame;
 }
 
 void dll_recv()            																											//Alexi Kessler
