@@ -61,7 +61,7 @@ void nwl_read(std::string fileName);
 void nwl_recv();
 //Data Link layer functions
 frame dll_send(packet pkt);
-void dll_recv();
+frame dll_recv();
 //Physical layer functions
 int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName);
 void phl_send(frame fr);
@@ -75,6 +75,7 @@ void testSendMessage();
 void testSendFrame();
 void printFrame (frame fr);
 int waitEvent();
+frame makeTestFrame (char frType);																									//Make temporary frame for testing purposes
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -203,7 +204,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	int i = 0;
 	int counter = 0;
 	
-	while (i < CHUNK_SIZE)
+	while (i < CHUNK_SIZE)																											//Go byte by byte through the packet
 	{
 		if (DEBUG)
 			cout<<"\ni: "<<i<<" counter: "<<counter<<std::endl;
@@ -282,9 +283,11 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	return *emptyFrame;
 }
 
-void dll_recv()            																											//Alexi Kessler
+frame dll_recv()            																											//Alexi Kessler
 {
-	//bufToFrame
+	frame* returnFrame = new frame();
+	//returnFrame = bufToFrame(phl_recv())
+	return *returnFrame;
 }
 
 int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName)										//Alexi Kessler
@@ -506,16 +509,15 @@ void testSendFrame ()																												//Alexi Kessler
 	test->frameType = DATA_FRAME;
 	test->EOP = END_PACKET;
 	test->dataLength = 130;
-	
 	cout<<"Setting payload values"<<std::endl;
 	int counter = 0;
 	while (counter<test->dataLength)
 	{
 		test->payload[counter] = '9';
-		//cout<<"Set payload["<<counter<<"] to "<<test->payload[counter]<<std::endl;
 		counter++;
 	}
 	cout<<"Set payload values"<<std::endl;
+	test->ED = 2391;																												//Placeholder, actual value added before send
 	
 	char tempBuf[10];
 	char sendChar[MAX_FRAME_SIZE*10];
@@ -572,3 +574,23 @@ void printFrame (frame fr)																											//Alexi Kessler
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
 }
+
+frame makeTestFrame (char frType)																												//Alexi Kessler
+{
+	frame* fr = new frame();
+	fr->seqNumber = 12;
+	fr->frameType = frType;
+	fr->EOP = END_PACKET;
+	fr->dataLength = 130;
+	cout<<"Setting payload values"<<std::endl;
+	int counter = 0;
+	while (counter<fr->dataLength)
+	{
+		fr->payload[counter] = '9';
+		counter++;
+	}
+	cout<<"Set payload values"<<std::endl;
+	fr->ED = 2391;																													//Placeholder, actual value added before send
+	return *fr;
+}
+
