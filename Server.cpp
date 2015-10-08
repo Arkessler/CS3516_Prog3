@@ -264,7 +264,7 @@ frame* read_frame(char* buffer, int bytes_rcvd){
 	/***********************************NEEDS TO BE CHECKED****************************/
 	new_frame->payload[PAYLOAD_SIZE] = '\0';
 	
-	new_frame->ED = atoi(ED); the
+	new_frame->ED = atoi(ED);
 	
 	printFrame(*new_frame);
 	return new_frame;	
@@ -277,7 +277,7 @@ void printFrame (frame fr)																											//Alexi Kessler
 	cout<<"Payload:"<<std::endl; 
 	int i = 0;
 	
-	while (i < MAX_FRAME_PAYLOAD) by
+	while (i < MAX_FRAME_PAYLOAD) 
 	{
 		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
 		i++;
