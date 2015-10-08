@@ -40,9 +40,9 @@ class frame																															//Alexi Kessler
 		short int seqNumber; 																										//2 bytes long
 		char frameType; 																											//1 byte long
 		char EOP;																													//1 byte long
-		short int dataLength;																										//2 bytes long, used in case payload is not full 130 bytes
+		unsigned short int dataLength;																								//2 bytes long, used in case payload is not full 130 bytes
 		char payload[130];																											//130 bytes long
-		short int ED;																												//2 bytes long
+		short int ED;																										//2 bytes long
 };
 
 //typedef enum {frame_arrival} event_type
@@ -76,6 +76,7 @@ void testSendFrame();
 void printFrame (frame fr);
 int waitEvent();
 frame makeTestFrame (char frType);																									//Make temporary frame for testing purposes
+void testPrintPhoto (std::string loc);
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -151,6 +152,9 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 		{
 			packet * sendPacket = new packet();
 			
+			if (DEBUG)
+				cout<<"Read buf: "<<buf<<std::endl;
+			
 			sendPacket->endPhoto = CONT_PACKET;
 			strncpy(sendPacket->payload, buf, 256);
 			frame recvFrame = dll_send(*sendPacket);
@@ -206,12 +210,8 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	
 	while (i < CHUNK_SIZE)																											//Go byte by byte through the packet
 	{
-		if (DEBUG)
-			cout<<"\ni: "<<i<<" counter: "<<counter<<std::endl;
 		if (counter < MAX_FRAME_PAYLOAD)
 		{
-			if (DEBUG)
-				cout<<"Copying "<<i<<" character of array"<<std::endl;
 			framePayload[counter] = givenArray[i];
 			counter++;
 		}
@@ -256,10 +256,12 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		sendFrame->seqNumber = sequenceNumber;
 		sequenceNumber++;
 		sendFrame->frameType = DATA_FRAME;
+		sendFrame->EOP = END_PACKET;
+		/*
 		if (endPhoto)
 			sendFrame->EOP = END_PACKET;
 		else 
-			sendFrame->EOP = CONT_PACKET;
+			sendFrame->EOP = CONT_PACKET;*/
 		sendFrame->dataLength = counter;																							//Signifies how much leftover data was put into payload
 		strncpy(sendFrame->payload, framePayload, counter+1);
 		sendFrame->ED = 0; 																											//Placeholder, actual Error Detect Create takes place right before sending
@@ -348,7 +350,11 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 			return -1;
 		}
 		else
+		{
+			if (DEBUG)
+				cout<<"sockfd: "<<sockfd<<std::endl;
 			return 0;
+		}
 	}
 	return -2; 																														//Should not reach this point
 }
@@ -358,20 +364,62 @@ void phl_send(frame fr)																												//Alexi Kessler
 	cout<<"Physical layer received frame:"<<std::endl;
 	printFrame(fr);
 	
-	char tempBuf[10];																										
+	char tempBuf[10];
+	char lengthBuf[10];
 	char sendChar[MAX_FRAME_SIZE];																									//Char* string to be sent with send()
-	sprintf(sendChar, "%hi%c%c%hi", fr.seqNumber, fr.frameType, fr.EOP, fr.dataLength);												//Start concatting everything into sendChar			
+	if (fr.seqNumber < 10)
+		sprintf(sendChar, "0000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);												//Start concatting everything into sendChar			
+	else if (fr.seqNumber < 100)
+		sprintf(sendChar, "000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
+	else if (fr.seqNumber < 1000)
+		sprintf(sendChar, "00%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
+	else if (fr.seqNumber < 10000)
+		sprintf(sendChar, "0%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
+	else
+		sprintf(sendChar, "%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
+	
+	if (fr.dataLength < 10)
+		sprintf(lengthBuf, "0000%hi", fr.dataLength);
+	else if (fr.dataLength<100)
+		sprintf(lengthBuf, "000%hi", fr.dataLength);
+	else if (fr.dataLength<1000)
+		sprintf(lengthBuf, "00%hi", fr.dataLength);
+	else if (fr.dataLength<10000)
+		sprintf(lengthBuf, "0%hi", fr.dataLength);
+	else
+		sprintf(lengthBuf, "%hi", fr.dataLength);	
+	strcat(sendChar, lengthBuf);
+	
 	int i = 0;
 	while (i<fr.dataLength)
 	{
-		cout<<"Frame payload["<<i<<"]: "<<fr.payload[i]<<std::endl;
 		strcat(sendChar, &(fr.payload[i]));
 		i++;
 	}
 	
 	fr.ED = errorDetectCreate(sendChar, strlen(sendChar));
-	
-	sprintf(tempBuf, "%hi", fr.ED);
+	if (fr.ED <= -10000)
+		sprintf(tempBuf, "%hi", fr.ED);
+	else if ((fr.ED<=-1000) && (fr.ED>-10000))
+		sprintf(tempBuf, "0%hi", fr.ED);
+	else if ((fr.ED<=-100) && (fr.ED>-1000))
+		sprintf(tempBuf, "00%hi", fr.ED);
+	else if ((fr.ED<=-10) && (fr.ED>-100))
+		sprintf(tempBuf, "000%hi", fr.ED);
+	else if ((fr.ED<0) && (fr.ED>-10))
+		sprintf(tempBuf, "0000%hi", fr.ED);
+	else if (fr.ED < 10)
+		sprintf(tempBuf, "00000%hi", fr.ED);
+	else if (fr.ED < 100)
+		sprintf(tempBuf, "0000%hi", fr.ED);
+	else if (fr.ED < 1000)
+		sprintf(tempBuf, "000%hi", fr.ED);
+	else if (fr.ED < 10000)
+		sprintf(tempBuf, "00%hi", fr.ED);
+	else if (fr.ED < 100000)
+		sprintf(tempBuf, "0%hi", fr.ED);
+	else 
+		DieWithError("Error converting ED to string");
 	strcat(sendChar, tempBuf);
 	
 	if (DEBUG)
@@ -386,6 +434,12 @@ void phl_send(frame fr)																												//Alexi Kessler
 		cout<<"Send failed, different number of bytes sent. Expected: "<<sendLength<<" Sent: "<<sendRes<<std::endl;
 	else
 		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
+	
+	//Quick hacky test
+	char buff[260];
+	int bytes = 0;
+	bytes = recv(sockfd, recvBuf, 260-1, 0);
+	cout<<"Buf: "<<buff<<std::endl;
 }	//TO DO: Test this 
 
 char* phl_recv()																													//Alexi Kessler
@@ -412,7 +466,7 @@ int waitEvent()																														//Alexi Kessler
 	FD_ZERO (&readset);
 	FD_SET (sockfd, &readset);
 	
-	tv.tv_sec = 2;
+	tv.tv_sec = 4;
 	tv.tv_usec = MAX_WAIT_TIME;
 	
 	returnVal = select(1, &readset, NULL, NULL, &tv);
@@ -423,6 +477,10 @@ int waitEvent()																														//Alexi Kessler
 	}
 	else if (returnVal > 0)
 	{
+		if (DEBUG)
+		{
+			cout<<"waitEvent found that socket changed"<<std::endl;
+		}
 		FD_ZERO (&readset);
 	}
 	
@@ -442,8 +500,6 @@ short int errorDetectCreate(char* info, int infoLength)																				//Ale
 	short int retVal;
 	while (counter < infoLength)
 	{
-		if (DEBUG)
-			cout<<"ErrorDetectCreate cycle with counter: "<<counter<<std::endl;
 		if (counter == 0)
 		{
 			/*cout<<"Before first copy, frameInfo[0]: "<<frameInfo[0]<<" frameInfo[1]: "<<frameInfo[1]<<std::endl;
@@ -493,7 +549,7 @@ short int errorDetectCreate(char* info, int infoLength)																				//Ale
 			}
 		}
 	}
-	retVal = XOR[0] << 8 | XOR[1];			//NEED TO TEST ENDIANNESS																//Turn COR char array into short int
+	retVal = XOR[0] << 8 | XOR[1];			//NEED TO TEST ENDIANNESS																//Turn XOR char array into short int
 	if (DEBUG)
 	{
 		cout<<"Created XOR value of: "<<retVal<<std::endl;
@@ -607,5 +663,27 @@ frame makeTestFrame (char frType)																												//Alexi Kessler
 	cout<<"Set payload values"<<std::endl;
 	fr->ED = 2391;																																//Placeholder, actual value added before send
 	return *fr;
+}
+
+void testPrintPhoto (std::string loc)
+{
+	FILE *file = fopen(loc.c_str(), "r");
+    char code[1000];
+    size_t n = 0;
+    int c;
+
+    if (file == NULL)
+		cout<<"Could not open"<<std::endl;
+
+    while (((c = fgetc(file)) != EOF) && (c<230))
+    {
+        code[n++] = (char) c;
+    }
+	n = 0;
+	while (n<230)
+	{
+		cout<<"Char "<<n<<": "<<code[n]<<std::endl;
+		n++;
+	}
 }
 
