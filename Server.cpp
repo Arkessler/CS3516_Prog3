@@ -33,11 +33,12 @@ using namespace std;
 #define BUFFSIZE 150   /* Size of receive buffer */
 #define SERVPORT 1199	//Maximun ammount of entries on the list
 #define FRAME_TYPE_SIZE 1
-#define SEQ_NUM_SIZE 2
+#define SEQ_NUM_SIZE 5
 #define EOP_SIZE 1
 #define PAYLOAD_SIZE 130
-#define ERRD_SIZE 1
+#define ERRD_SIZE 5
 #define MAX_FRAME_PAYLOAD 130
+#define USABLE_BYTES 5
 
 #define DEBUG 0
 
@@ -51,20 +52,22 @@ class packet
 class frame
 {
 	public:
-		short int seqNumber; 																										//2 bytes long
+		unsigned short int seqNumber; 																										//2 bytes long
 		char frameType; 																											//1 byte long
-		char EOP;																													//1 byte long 
-		char payload[130];																											//130 bytes long
+		char EOP;
+		unsigned short int usable_bytes;																													//1 byte long 
+		char payload[MAX_FRAME_PAYLOAD];																											//130 bytes long
 		short int ED;																												//2 bytes long
 };
 
 void DieWithError(char *errorMessage); /* Error handling function */
-frame* read_frame(char* buffer, int bytes_rcvd);
+frame* read_frame(char* buffer);
 void printFrame (frame fr);
 
 int main(int argc, char *argv[]){ 
  int bytes_r;
  int pid;
+ int i;								//Loop counter
  char buffer[BUFFSIZE];
  int servSock; 					/*Socket descriptor for server */
  int clntSock; 					/* Socket descriptor for client */
@@ -72,6 +75,7 @@ int main(int argc, char *argv[]){
  struct sockaddr_in ClntAddr; 		/* Client address */
  unsigned short ServPort; 			/* Server port */
  unsigned int clntLen;
+ frame* tempPacket[10];
  
  frame* inc_frame = new frame();
 	ServPort = SERVPORT;			
@@ -114,27 +118,35 @@ for (;;) /* Run forever */{
         }
 
         if (pid == 0) { // this is the child process
+        		i = 0;
                 close(servSock); // child doesn't need the listener
-                if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
-                        cout<< "Error in recv()";
+                do{
+                	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
+                	        cout<< "Error in recv()";
 				
-                buffer[bytes_r] = '\0';
-				cout<<"Bytes recieved: "<<bytes_r<<std::endl;
-                cout<<"Buffer:\n"<<buffer<<std::endl;
-                //Send AK
-				inc_frame = read_frame(buffer, bytes_r);
-				if(inc_frame != NULL){
-                	if (send(clntSock, "ACK", 5, 0) == -1)
-                        	perror("send");
-				}
-				
-				cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
-				
-				printFrame(*inc_frame);
-				
-                close(clntSock);
-                exit(0);
-        }
+                	buffer[bytes_r] = '\0';
+					cout<<"Bytes recieved: "<<bytes_r<<std::endl;
+                	cout<<"Buffer:\n"<<buffer<<std::endl;
+                	//Send AK
+					inc_frame = read_frame(buffer);
+					//if(inc_frame != NULL){
+                		if (send(clntSock, "ACK", 5, 0) == -1)
+                    	    	perror("send");
+					//}
+
+					tempPacket[i] = inc_frame;					//Store the frames to later build up 
+					i++;
+
+					cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
+					
+					printFrame(*inc_frame);
+
+
+        		} while(strcmp(&inc_frame->EOP, "E") != 0);
+
+        	close(clntSock);
+            exit(0);
+    }
 
         else if (pid > 0){
         close(clntSock);  // parent doesn't need this
@@ -152,17 +164,19 @@ void DieWithError(char *errorMessage)
     exit(1);
 } 
 
-frame* read_frame(char* buffer, int bytes_rcvd){
+frame* read_frame(char* buffer){
 	frame* new_frame = new frame();
 	
 	int i = 0;
 	int place = 0;
 	int startFrameType = SEQ_NUM_SIZE;
 	int startEOP = startFrameType + FRAME_TYPE_SIZE;
-	int startPayload = startEOP + EOP_SIZE;
+	int startUsableBytes = startEOP + USABLE_BYTES;
+	int startPayload = startUsableBytes + EOP_SIZE;
 	char seq_num[SEQ_NUM_SIZE + 1];
 	int ED_temp;
 	char frameType;
+	char usable_b[USABLE_BYTES];
 	char EOP;
 	char ED[ERRD_SIZE];
 	char payload[130];
@@ -217,16 +231,31 @@ frame* read_frame(char* buffer, int bytes_rcvd){
 		i++;
 	}
 	cout<<"Parsed EOP...\n";
-	
+	 place =i;
 	
 	if(DEBUG){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	}
 	
+	cout<<"Parsing usable bytes...\n";
+	while (i < place+USABLE_BYTES){
+		
+		if(DEBUG){
+		cout<<"EOP while 'i' value: "<<i<<std::endl;
+		}
+		
+		strncpy(usable_b, &buffer[i], 1);
+		i++;
+	}
+	cout<<"Parsed usable bytes...\n";
 	
 	place=i;
 	
 	cout<<"Parsing payload...\n";
+
+	int bytes_rcvd = atoi(usable_b);
+	cout<<bytes_rcvd<<std::endl;
+
 	while (i < place+PAYLOAD_SIZE){
 		
 		if(DEBUG){
@@ -264,9 +293,10 @@ frame* read_frame(char* buffer, int bytes_rcvd){
 	/***********************************NEEDS TO BE CHECKED****************************/
 	new_frame->payload[PAYLOAD_SIZE] = '\0';
 	
+	new_frame->usable_bytes = bytes_rcvd;
 	new_frame->ED = atoi(ED);
 	
-	printFrame(*new_frame);
+	//printFrame(*new_frame);
 	return new_frame;	
 }
 
@@ -274,7 +304,9 @@ void printFrame (frame fr)																											//Alexi Kessler
 {
 	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "
 		<<fr.EOP<<std::endl;
+	cout<<"Usable bytes: "<<fr.usable_bytes<<std::endl;
 	cout<<"Payload:"<<std::endl; 
+
 	int i = 0;
 	
 	while (i < MAX_FRAME_PAYLOAD) 
