@@ -23,6 +23,7 @@
 #define END_PACKET 'E'
 #define CONT_PACKET 'C'
 #define MAX_WAIT_TIME 750
+#define SIZE_RECEIVING_BUFFER 400         //TODO: Change this to a more appropriate number
 
 using namespace std;
 
@@ -51,6 +52,7 @@ bool DEBUG = true;
 //Send global var(s)
 int sockfd = 0;
 short int sequenceNumber = 0;
+char recvBuf[SIZE_RECEIVING_BUFFER];
 //Misc global var(s)
 std::ofstream fileStream;
 
@@ -63,9 +65,10 @@ void dll_recv();
 //Physical layer functions
 int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName);
 void phl_send(frame fr);
-void phl_recv();
+char* phl_recv();
 void phl_close();
 //Misc functions
+frame bufToFrame(char * buf);
 void DieWithError(char *errorMessage);
 short int errorDetectCreate(char* frameInfo, int infoLength);
 void testSendMessage();
@@ -113,8 +116,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	testSendFrame(); 
 	
 	for (count = 0; count<numPhoto; count++)
-	{
-		//Set new readLoc
+	{																																//Set new readLoc
 		readLoc = "photo";
 		manipStream<<cId;																											//Convert cId to string
 		readLoc.append(manipStream.str());
@@ -273,7 +275,7 @@ void dll_send(packet pkt)																											//Alexi Kessler
 
 void dll_recv()            																											//Alexi Kessler
 {
-	
+	//bufToFrame
 }
 
 int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, char *serverName)										//Alexi Kessler
@@ -359,9 +361,14 @@ void phl_send(frame fr)																												//Alexi Kessler
 		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
 }	//TO DO: Test this 
 
-void phl_recv()																														//Alexi Kessler
+char* phl_recv()																														//Alexi Kessler
 {
-	//recv() wait
+	int bytesReceived;									
+	
+	bytesReceived = recv(sockfd, recvBuf, SIZE_RECEIVING_BUFFER-1, 0);
+	if (bytesReceived <= 0)
+		DieWithError("Issue with phl_recv");
+	return recvBuf;	
 }
 	
 void phl_close()																													//Alexi Kessler
