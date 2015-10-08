@@ -114,7 +114,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 	
 	//testSendMessage();
-	testSendFrame(); 
+	//testSendFrame(); 
 	
 	for (count = 0; count<numPhoto; count++)
 	{																																//Set new readLoc
@@ -232,9 +232,19 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			phl_send(*sendFrame);
 			counter = 0;
 			int waitRes = waitEvent();
-			if (waitRes == 0)
+			if (waitRes == 0)							//Time out
+			{
 				cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
-			//TO DO: Add wait handling from below
+				//Retransmit
+				//Start new timer
+			}
+			else if (waitRes > 0)
+			{
+				frame* recvFrame = new frame();
+				*recvFrame = dll_recv();
+				//Check if ack or frame
+					//Check if right ack
+			}
 		}
 		i++;
 	}
@@ -255,18 +265,19 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		sendFrame->ED = 0; 																											//Placeholder, actual Error Detect Create takes place right before sending
 		phl_send(*sendFrame);
 		int waitRes = waitEvent();
-			if (waitRes == 0)							//Time out
-			{
-				cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
-				//Retransmit
-				//Start new timer
-			}
-			else if (waitRes > 0)
-			{
-				//frame = dll_recv()
-				//Check if ack or frame
-					//Check if right ack
-			}
+		if (waitRes == 0)							//Time out
+		{
+			cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
+			//Retransmit
+			//Start new timer
+		}
+		else if (waitRes > 0)
+		{
+			frame* recvFrame = new frame();
+			*recvFrame = dll_recv();
+			//Check if ack or frame
+				//Check if right ack
+		}
 	}
 	//------------------------------------------------------------STILL NEED TO ADD TIMER, WAITING, AND ACK --------------------------------
 	//TO DO: For each payload
@@ -286,7 +297,11 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 frame dll_recv()            																											//Alexi Kessler
 {
 	frame* returnFrame = new frame();
-	//returnFrame = bufToFrame(phl_recv())
+	char* phlChar;
+	phlChar = phl_recv();
+	if (DEBUG)
+		cout<<"Received: "<<phlChar<<std::endl;
+	//returnFrame = bufToFrame(phlChar);
 	return *returnFrame;
 }
 
@@ -590,7 +605,7 @@ frame makeTestFrame (char frType)																												//Alexi Kessler
 		counter++;
 	}
 	cout<<"Set payload values"<<std::endl;
-	fr->ED = 2391;																													//Placeholder, actual value added before send
+	fr->ED = 2391;																																//Placeholder, actual value added before send
 	return *fr;
 }
 
