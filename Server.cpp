@@ -37,29 +37,29 @@ using namespace std;
 #define EOP_SIZE 1
 #define PAYLOAD_SIZE 130
 #define ERRD_SIZE 1
-
 #define MAX_FRAME_PAYLOAD 130
 
-class packet																														//Alexi Kessler
+#define DEBUG 0
+
+class packet
 {
 	public:
 		char payload[256]; 																											//256 bytes long
 		char endPhoto;																												//1 byte long end of photo indicator
 };
 
-class frame																															//Alexi Kessler
+class frame
 {
 	public:
 		short int seqNumber; 																										//2 bytes long
 		char frameType; 																											//1 byte long
 		char EOP;																													//1 byte long 
-		short int dataLength;
 		char payload[130];																											//130 bytes long
 		short int ED;																												//2 bytes long
 };
 
 void DieWithError(char *errorMessage); /* Error handling function */
-frame* read_frame(char* buffer);
+frame* read_frame(char* buffer, int bytes_rcvd);
 void printFrame (frame fr);
 
 int main(int argc, char *argv[]){ 
@@ -122,12 +122,11 @@ for (;;) /* Run forever */{
 				cout<<"Bytes recieved: "<<bytes_r<<std::endl;
                 cout<<"Buffer:\n"<<buffer<<std::endl;
                 //Send AK
-				
-                if (send(clntSock, "ACK", 5, 0) == -1)
-                        perror("send");
-				
-				
-				inc_frame = read_frame(buffer);
+				inc_frame = read_frame(buffer, bytes_r);
+				if(inc_frame != NULL){
+                	if (send(clntSock, "ACK", 5, 0) == -1)
+                        	perror("send");
+				}
 				
 				cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
 				
@@ -153,7 +152,7 @@ void DieWithError(char *errorMessage)
     exit(1);
 } 
 
-frame* read_frame(char* buffer){
+frame* read_frame(char* buffer, int bytes_rcvd){
 	frame* new_frame = new frame();
 	
 	int i = 0;
@@ -162,32 +161,37 @@ frame* read_frame(char* buffer){
 	int startEOP = startFrameType + FRAME_TYPE_SIZE;
 	int startPayload = startEOP + EOP_SIZE;
 	char seq_num[SEQ_NUM_SIZE + 1];
-	int seq_num_temp;
 	int ED_temp;
 	char frameType;
 	char EOP;
 	char ED[ERRD_SIZE];
 	char payload[130];
+		
+	memset(seq_num, 0, strlen(seq_num));
 	
 	cout<<"Parsing sequence number...\n";
 	while (i < place+SEQ_NUM_SIZE){
-		cout<<"Value of i: "<<i<<"\nValue of place: "<<place<<"\nValue of SEQ_NUM: "<<SEQ_NUM_SIZE<<std::endl;
-		cout<<"Starting copy..."<<std::endl;
 		
-		//if(i == 0){
-		strncpy(&seq_num[i], &buffer[i], 1);
-		//}
-		//else{
-			//strncat(&seq_num, &buffer[i], 1);
-		//}
+		if(DEBUG){
+		cout<<"Value of i: "<<i<<"\nValue of place: "<<place<<std::endl;
+		cout<<"Starting copy..."<<std::endl;
+		}
+		strncat(&seq_num[i], &buffer[i], 1);
+		
+		if(DEBUG){
+		cout<<"\nValue of SEQ_NUM: "<<seq_num<<std::endl;
+		}
 		
 		i++;	
 	}
 	seq_num[SEQ_NUM_SIZE] = '\0';
-	
 	cout<<"Parsed sequence number: "<<seq_num<<std::endl;
 	
-	place+=i;
+	if(DEBUG){
+	cout<<"Value i: "<<i<<std::endl;
+	}
+	
+	place=i;
 	
 	cout<<"Parsing frame type...\n";
 	while (i< place+FRAME_TYPE_SIZE){
@@ -196,44 +200,71 @@ frame* read_frame(char* buffer){
 	}
 	cout<<"Parsed frame type: "<<frameType<<std::endl;
 	
-	place+=i;
+	if(DEBUG){
+	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
+	}
+	
+	place=i;
 	
 	cout<<"Parsing EOP...\n";
 	while (i < place+EOP_SIZE){
+		
+		if(DEBUG){
+		cout<<"EOP while 'i' value: "<<i<<std::endl;
+		}
+		
 		strncpy(&new_frame->EOP, &buffer[i], 1);
 		i++;
 	}
 	cout<<"Parsed EOP...\n";
 	
+	
+	if(DEBUG){
+	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
+	}
+	
+	
+	place=i;
+	
 	cout<<"Parsing payload...\n";
 	while (i < place+PAYLOAD_SIZE){
-		strncat(&payload[i-startPayload], &buffer[i], 1);
+		
+		if(DEBUG){
+		cout<<"Value i: "<<i<<std::endl;
+		}
+		
+		strncat(&new_frame->payload[i-startPayload], &buffer[i], 1);
 		i++;
+		
+		if(DEBUG){
+		cout<<"Value i: "<<i<<std::endl;
+		cout<<"Payload["<<i-startPayload<<"] "<<&payload[i-startPayload]<<std::endl;
+		}
 	}
+	memset(&new_frame->payload[bytes_rcvd], 0, PAYLOAD_SIZE - bytes_rcvd);
 	cout<<"Parsed payload...\n";
 	
-	place+=i;
+	place=i;
+	
+	if(DEBUG){
+	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
+	}
 	
 	cout<<"Parsing Error Detection...\n";
 	while(i < place+ERRD_SIZE){
 		strncat(ED, &buffer[i], 1);
 		i++;
 	}
-	cout<<"Parsed Error Detection: "<<ED<<std::endl;
 	
-	seq_num_temp = atoi(&seq_num);
-	cout<<"Sequence number: "<<seq_num_temp<<std::endl;
+	if(DEBUG){
+	cout<<"Parsed Error Detection: "<<ED<<std::endl;
+	}
 	
 	new_frame->seqNumber = atoi(seq_num);
-	
-	//strncpy(&new_frame->frameType, &frameType, FRAME_TYPE_SIZE);
-	
-	//strncpy(&new_frame->EOP, &EOP, EOP_SIZE);
-	
-	strncpy(new_frame->payload, payload, PAYLOAD_SIZE);
+	/***********************************NEEDS TO BE CHECKED****************************/
 	new_frame->payload[PAYLOAD_SIZE] = '\0';
 	
-	new_frame->ED = atoi(&ED);
+	new_frame->ED = atoi(ED); the
 	
 	printFrame(*new_frame);
 	return new_frame;	
@@ -243,10 +274,10 @@ void printFrame (frame fr)																											//Alexi Kessler
 {
 	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "
 		<<fr.EOP<<std::endl;
-	cout<<"Payload:"<<std::endl;
+	cout<<"Payload:"<<std::endl; 
 	int i = 0;
 	
-	while (i < MAX_FRAME_PAYLOAD)
+	while (i < MAX_FRAME_PAYLOAD) by
 	{
 		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
 		i++;
