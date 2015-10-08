@@ -361,7 +361,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
 }	//TO DO: Test this 
 
-char* phl_recv()																														//Alexi Kessler
+char* phl_recv()																													//Alexi Kessler
 {
 	int bytesReceived;									
 	
