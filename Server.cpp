@@ -36,7 +36,7 @@ using namespace std;
 #define SEQ_NUM_SIZE 5
 #define EOP_SIZE 1
 #define PAYLOAD_SIZE 130
-#define ERRD_SIZE 5
+#define ERRD_SIZE 6
 #define MAX_FRAME_PAYLOAD 130
 #define USABLE_BYTES 5
 
@@ -139,6 +139,8 @@ for (;;) /* Run forever */{
                 	//Send AK
 					inc_frame = read_frame(buffer);
 					//if(inc_frame != NULL){
+						cout<<"Test String: "<<(test_string + i)<<std::endl;
+
                 		if (send(clntSock, test_string + i, strlen(test_string + i), 0) == -1)
                     	    	perror("send");
 					//}
@@ -152,7 +154,7 @@ for (;;) /* Run forever */{
 					//printFrame(*inc_frame);
 
 
-        		} while(strcmp(&inc_frame->EOP, "E") != 0);
+        		} while(&inc_frame->EOP != "E");
 
         	close(clntSock);
             exit(0);
@@ -183,12 +185,13 @@ frame* read_frame(char* buffer){
 	int startEOP = startFrameType + FRAME_TYPE_SIZE;
 	int startUsableBytes = startEOP + EOP_SIZE;
 	int startPayload = startUsableBytes + USABLE_BYTES;
+	int startERRD = startPayload + PAYLOAD_SIZE;
 	char seq_num[SEQ_NUM_SIZE + 1];
 	int ED_temp;
 	char frameType;
 	char usable_b[USABLE_BYTES + 1];
 	char EOP;
-	char ED[ERRD_SIZE];
+	char ED[ERRD_SIZE + 1];
 	char payload[130];
 		
 	memset(seq_num, 0, strlen(seq_num));
@@ -283,7 +286,7 @@ frame* read_frame(char* buffer){
 		cout<<"Payload["<<i-startPayload<<"] "<<&payload[i-startPayload]<<std::endl;
 		}
 	}
-	memset(&new_frame->payload[bytes_rcvd], 0, PAYLOAD_SIZE - bytes_rcvd);
+	//memset(&new_frame->payload[bytes_rcvd], 0, PAYLOAD_SIZE - bytes_rcvd);
 	cout<<"Parsed payload...\n";
 	
 	place=i;
@@ -294,9 +297,27 @@ frame* read_frame(char* buffer){
 	
 	cout<<"Parsing Error Detection...\n";
 	while(i < place+ERRD_SIZE){
-		strncat(ED, &buffer[i], 1);
+		strncpy(&ED[i-startERRD], &buffer[i], 1);
 		i++;
 	}
+	cout<<"Error Detection string: "<<ED<<std::endl;
+	ED[ERRD_SIZE] = '\0';
+
+	int parse = 0;
+	int ignore = 0;
+	while(parse < ERRD_SIZE){ 
+		if(ED[parse] == '0'){
+			ignore++;
+		}
+
+		else if(ED[parse] == '-'){
+			break;
+		}
+		
+		parse++;
+	}
+
+	cout<<"Ignore: "<<ignore<<std::endl;
 	
 	if(DEBUG){
 	cout<<"Parsed Error Detection: "<<ED<<std::endl;
@@ -304,13 +325,14 @@ frame* read_frame(char* buffer){
 	
 	new_frame->seqNumber = atoi(seq_num);
 	/***********************************NEEDS TO BE CHECKED****************************/
-	new_frame->payload[PAYLOAD_SIZE] = '\0';
+	//new_frame->payload[PAYLOAD_SIZE] = '\0';
 	
 	new_frame->usable_bytes = bytes_rcvd;
-	new_frame->ED = atoi(ED);
+	new_frame->ED = atoi(&ED[ignore]);
 	
-	//printFrame(*new_frame);
+	printFrame(*new_frame);
 	return new_frame;	
+		
 }
 
 void printFrame (frame fr)																											//Alexi Kessler
@@ -318,6 +340,7 @@ void printFrame (frame fr)																											//Alexi Kessler
 	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "
 		<<fr.EOP<<std::endl;
 	cout<<"Usable bytes: "<<fr.usable_bytes<<std::endl;
+	/*
 	cout<<"Payload:"<<std::endl; 
 
 	int i = 0;
@@ -327,6 +350,7 @@ void printFrame (frame fr)																											//Alexi Kessler
 		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
 		i++;
 	}
+	*/
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
-
+	
 }
