@@ -76,6 +76,7 @@ int main(int argc, char *argv[]){
  unsigned short ServPort; 			/* Server port */
  unsigned int clntLen;
  frame* tempPacket[10];
+ char* test_string = "Hello Master";
  
  frame* inc_frame = new frame();
 	ServPort = SERVPORT;			
@@ -121,16 +122,24 @@ for (;;) /* Run forever */{
         		i = 0;
                 close(servSock); // child doesn't need the listener
                 do{
+
+                	memset(buffer, 0, sizeof(buffer));
+
                 	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
                 	        cout<< "Error in recv()";
 				
-                	buffer[bytes_r] = '\0';
+                	//buffer[bytes_r] = '\0';
 					cout<<"Bytes recieved: "<<bytes_r<<std::endl;
-                	cout<<"Buffer:\n"<<buffer<<std::endl;
+                	
+                	int x = 0;
+                	while(x < BUFFSIZE){
+                	cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
+                	x++;
+                	}
                 	//Send AK
 					inc_frame = read_frame(buffer);
 					//if(inc_frame != NULL){
-                		if (send(clntSock, "ACK", 5, 0) == -1)
+                		if (send(clntSock, test_string + i, strlen(test_string + i), 0) == -1)
                     	    	perror("send");
 					//}
 
@@ -138,8 +147,9 @@ for (;;) /* Run forever */{
 					i++;
 
 					cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
-					
-					printFrame(*inc_frame);
+					cout<<"i value: "<<i<<std::endl;
+
+					//printFrame(*inc_frame);
 
 
         		} while(strcmp(&inc_frame->EOP, "E") != 0);
@@ -176,7 +186,7 @@ frame* read_frame(char* buffer){
 	char seq_num[SEQ_NUM_SIZE + 1];
 	int ED_temp;
 	char frameType;
-	char usable_b[USABLE_BYTES];
+	char usable_b[USABLE_BYTES + 1];
 	char EOP;
 	char ED[ERRD_SIZE];
 	char payload[130];
@@ -244,9 +254,12 @@ frame* read_frame(char* buffer){
 		cout<<"EOP while 'i' value: "<<i<<std::endl;
 		}
 		
-		strncpy(usable_b, &buffer[i], 1);
+		strncpy(&usable_b[i-startUsableBytes], &buffer[i], 1);
 		i++;
 	}
+	usable_b[USABLE_BYTES] = '\0';
+	cout<<"Printing usable_b string: "<<usable_b<<std::endl;
+
 	cout<<"Parsed usable bytes...\n";
 	
 	place=i;
@@ -262,7 +275,7 @@ frame* read_frame(char* buffer){
 		cout<<"Value i: "<<i<<std::endl;
 		}
 		
-		strncat(&new_frame->payload[i-startPayload], &buffer[i], 1);
+		strncpy(&new_frame->payload[i-startPayload], &buffer[i], 1);
 		i++;
 		
 		if(DEBUG){
