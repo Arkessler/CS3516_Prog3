@@ -424,13 +424,6 @@ void phl_send(frame fr)																												//Alexi Kessler
 		i++;
 	}
 	
-	i = 0;
-	while (i<length)
-	{
-		cout<<"sendChar["<<i<<"]: "<<sendChar[i]<<"ascii value:"<<(int)(sendChar[i])<<std::endl;
-		i++;
-	}
-	
 	if (DEBUG)
 		cout<<"Calling errorDetectCreate with length: "<<length<<std::endl;
 	fr.ED = errorDetectCreate(sendChar, length);
@@ -486,8 +479,9 @@ void phl_send(frame fr)																												//Alexi Kessler
 	if (sendRes != length)
 		DieWithError("Failed send");
 	
-	/*
+	
 	//Quick hacky test
+	/*
 	char buff[260];
 	int bytes = 0;
 	int z = 0;
