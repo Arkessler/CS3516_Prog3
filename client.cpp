@@ -383,10 +383,10 @@ void phl_send(frame fr)																												//Alexi Kessler
 	
 	char tempBuf[10];
 	char lengthBuf[10];
-	char sendChar[MAX_FRAME_SIZE+40];																							//Char* string to be sent with send()
+	char sendChar[MAX_FRAME_SIZE+40];																								//Char* string to be sent with send()
 	int length = 0;
 	if (fr.seqNumber < 10)
-		sprintf(sendChar, "0000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);												//Start concatting everything into sendChar			
+		sprintf(sendChar, "0000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);														//Start concatting everything into sendChar			
 	else if (fr.seqNumber < 100)
 		sprintf(sendChar, "000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
 	else if (fr.seqNumber < 1000)
@@ -415,6 +415,12 @@ void phl_send(frame fr)																												//Alexi Kessler
 	{
 		sendChar[length] = fr.payload[i];
 		length++; 
+		i++;
+	}
+	while (i<130)											//Padding
+	{
+		sendChar[length] = '0';
+		length++;
 		i++;
 	}
 	
@@ -452,8 +458,20 @@ void phl_send(frame fr)																												//Alexi Kessler
 		sprintf(tempBuf, "0%hi", fr.ED);
 	else 
 		DieWithError("Error converting ED to string");
-	length += 6;
-	strcat(sendChar, tempBuf);
+	i = 0;
+	while (i<6)
+	{
+		sendChar[length] = tempBuf[i];
+		i++;
+		length++;
+	}
+	
+	i = 0;
+	while (i<length)
+	{
+		cout<<"sendChar["<<i<<"]: "<<sendChar[i]<<"ascii value:"<<(int)(sendChar[i])<<std::endl;
+		i++;
+	}
 	//int sendLength = strlen(sendChar);
 	
 	int sendRes = 0;
@@ -468,6 +486,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 	if (sendRes != length)
 		DieWithError("Failed send");
 	
+	/*
 	//Quick hacky test
 	char buff[260];
 	int bytes = 0;
@@ -478,7 +497,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 	{
 		cout<<"Received["<<z<<"]: "<<buff[z]<<" ascii value: "<<(int)buff[z]<<std::endl;
 		z++;
-	}
+	} */
 }	//TO DO: Test this 
 
 char* phl_recv()																													//Alexi Kessler
@@ -519,6 +538,7 @@ int waitEvent()																														//Alexi Kessler
 		if (DEBUG)
 		{
 			cout<<"waitEvent found that socket changed"<<std::endl;
+			cout<<"waitEvent result: "<<returnVal<<std::endl;
 		}
 		FD_ZERO (&readset);
 	}
