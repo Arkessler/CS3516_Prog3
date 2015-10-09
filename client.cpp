@@ -192,15 +192,6 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 		{
 			packet * sendPacket = new packet();
 			
-			if (DEBUG)
-			{
-				int i = 0;
-				while (i < 256)
-				{
-					cout<<"buf["<<i<<"]: "<<buf[i]<<" ascii value:"<<(int)buf[i]<<std::endl;
-					i++;
-				}
-			}
 			sendPacket->endPhoto = CONT_PACKET;
 			//strncpy(sendPacket->payload, buf, 256);
 			int tempCount = 0;
@@ -214,7 +205,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 				tempCount = 0;
 				while (tempCount < 256)
 				{
-					cout<<"payload["<<tempCount<<"]: "<<sendPacket->payload[tempCount]<<" ascii value:"<<(int)(sendPacket->payload[tempCount])<<std::endl;
+					cout<<"Packet payload["<<tempCount<<"]: "<<sendPacket->payload[tempCount]<<" ascii value:"<<(int)(sendPacket->payload[tempCount])<<std::endl;
 					tempCount++;
 				}
 			}
@@ -291,7 +282,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				sendFrame->EOP = CONT_PACKET;
 			sendFrame->dataLength = counter;																						//Should be 130
 			tempCount = 0;
-			while (tempCount<CHUNK_SIZE)
+			while (tempCount<counter)
 			{
 				sendFrame->payload[tempCount] = framePayload[tempCount];
 				tempCount++;
@@ -324,13 +315,13 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		sequenceNumber++;
 		sendFrame->frameType = DATA_FRAME;
 		sendFrame->EOP = END_PACKET;
-		/*
-		if (endPhoto)
-			sendFrame->EOP = END_PACKET;
-		else 
-			sendFrame->EOP = CONT_PACKET;*/
 		sendFrame->dataLength = counter;																							//Signifies how much leftover data was put into payload
-		strncpy(sendFrame->payload, framePayload, counter+1);
+		tempCount = 0;
+		while (tempCount<counter)
+		{
+			sendFrame->payload[tempCount] = framePayload[tempCount];
+			tempCount++;
+		}
 		sendFrame->ED = 0; 																											//Placeholder, actual Error Detect Create takes place right before sending
 		phl_send(*sendFrame);
 		int waitRes = waitEvent();
@@ -433,7 +424,8 @@ void phl_send(frame fr)																												//Alexi Kessler
 	
 	char tempBuf[10];
 	char lengthBuf[10];
-	char sendChar[MAX_FRAME_SIZE];																									//Char* string to be sent with send()
+	char sendChar[MAX_FRAME_SIZE+40];																							//Char* string to be sent with send()
+	int length = 0;
 	if (fr.seqNumber < 10)
 		sprintf(sendChar, "0000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);												//Start concatting everything into sendChar			
 	else if (fr.seqNumber < 100)
@@ -444,6 +436,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 		sprintf(sendChar, "0%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
 	else
 		sprintf(sendChar, "%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
+	length += 7;
 	
 	if (fr.dataLength < 10)
 		sprintf(lengthBuf, "0000%hi", fr.dataLength);
@@ -456,15 +449,28 @@ void phl_send(frame fr)																												//Alexi Kessler
 	else
 		sprintf(lengthBuf, "%hi", fr.dataLength);	
 	strcat(sendChar, lengthBuf);
+	length += 5;
 	
 	int i = 0;
 	while (i<fr.dataLength)
 	{
-		strcat(sendChar, &(fr.payload[i]));
+		sendChar[length] = fr.payload[i];
+		length++; 
 		i++;
 	}
 	
-	fr.ED = errorDetectCreate(sendChar, strlen(sendChar));
+	i = 0;
+	while (i<length)
+	{
+		cout<<"sendChar["<<i<<"]: "<<sendChar[i]<<"ascii value:"<<(int)(sendChar[i])<<std::endl;
+		i++;
+	}
+	
+	if (DEBUG)
+		cout<<"Calling errorDetectCreate with length: "<<length<<std::endl;
+	fr.ED = errorDetectCreate(sendChar, length);
+	if (DEBUG)
+		cout<<"Successfully generated ED"<<std::endl;
 	if (fr.ED <= -10000)
 		sprintf(tempBuf, "%hi", fr.ED);
 	else if ((fr.ED<=-1000) && (fr.ED>-10000))
@@ -487,18 +493,19 @@ void phl_send(frame fr)																												//Alexi Kessler
 		sprintf(tempBuf, "0%hi", fr.ED);
 	else 
 		DieWithError("Error converting ED to string");
+	length += 6;
 	strcat(sendChar, tempBuf);
 	
 	if (DEBUG)
 	{
 		cout<<"String to send: "<<sendChar<<std::endl;
 	}
-	int sendLength = strlen(sendChar);
+	//int sendLength = strlen(sendChar);
 	
 	int sendRes = 0;
-	sendRes = send(sockfd, sendChar, sendLength, 0);
-	if (sendRes != sendLength)
-		cout<<"Send failed, different number of bytes sent. Expected: "<<sendLength<<" Sent: "<<sendRes<<std::endl;
+	sendRes = send(sockfd, (void*)sendChar, length, 0);
+	if (sendRes != length)
+		cout<<"Send failed, different number of bytes sent. Expected: "<<length<<" Sent: "<<sendRes<<std::endl;
 	else
 		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
 	
@@ -602,8 +609,8 @@ short int errorDetectCreate(char* info, int infoLength)																				//Ale
 			else
 			{
 				int tracker = counter;
-				if (DEBUG)
-					cout<<"XORING segment starting at "<<counter<<std::endl;
+				/*if (DEBUG)
+					cout<<"XORING segment starting at "<<counter<<std::endl;*/
 				strncpy(tempArray1, &XOR[0], 2);
 				strncpy(tempArray2, &frameInfo[counter],  2);
 				tempChar1 = (char)(tempArray1[0]^tempArray2[0]);
