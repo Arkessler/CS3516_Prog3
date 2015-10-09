@@ -181,8 +181,8 @@ frame* read_frame(char* buffer){
 	int place = 0;
 	int startFrameType = SEQ_NUM_SIZE;
 	int startEOP = startFrameType + FRAME_TYPE_SIZE;
-	int startUsableBytes = startEOP + USABLE_BYTES;
-	int startPayload = startUsableBytes + EOP_SIZE;
+	int startUsableBytes = startEOP + EOP_SIZE;
+	int startPayload = startUsableBytes + USABLE_BYTES;
 	char seq_num[SEQ_NUM_SIZE + 1];
 	int ED_temp;
 	char frameType;
