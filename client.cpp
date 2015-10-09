@@ -1,4 +1,5 @@
 #include <iostream>
+#include <unistd.h>
 #include <string>
 #include <cstddef>
 #include <sstream>
@@ -12,6 +13,8 @@
 #include <sstream>																													//Provides stringStream
 #include <fstream>																													//Provides ofstream, read()
 #include <errno.h>
+#include <sys/stat.h> 
+#include <fcntl.h>
 
 #define DEFAULT_PORT 1199
 #define CHUNK_SIZE 256
@@ -77,6 +80,7 @@ void printFrame (frame fr);
 int waitEvent();
 frame makeTestFrame (char frType);																									//Make temporary frame for testing purposes
 void testPrintPhoto (std::string loc);
+void testWritePacket (packet packet);
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -132,7 +136,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 		nwl_read(readLoc);																											//Have network layer read file
 	}
 	
-	phl_close();
+	phl_close();																													//Close socket after reading last photo
 }
 
 void nwl_read(std::string fileName)																									//Alexi Kessler
@@ -140,6 +144,42 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 	std::ifstream stream (fileName.c_str(), std::ifstream::binary);
 	char buf[300];
 	char currChar;
+	
+	/*
+	//-------------------------------------------------------------------------TO DO: No matter how this is done, fills packet with NULL characters. Why?-------------
+	int rfile;
+	int rd_size;
+	int count = 0;
+	char tempBuf[300];
+	if ((rfile = open(fileName.c_str(), O_RDONLY)) < 0)
+	{
+		perror("Input File Open Error");
+		exit(1);
+	}
+ 
+	while (((rd_size = read(rfile, tempBuf, 256)) > 0) && (count < 1))
+	{
+		packet * sendPacket = new packet();
+			
+		if (DEBUG)
+			cout<<"Read buf: "<<tempBuf<<std::endl;
+		
+		sendPacket->endPhoto = CONT_PACKET;
+		strncpy(sendPacket->payload, tempBuf, 256);
+		testWritePacket(*sendPacket);
+		count++;
+	}
+	if (rd_size < 0)
+	{
+		DieWithError("File read error");
+	}
+	else
+	{
+		printf ("Reach the end of the file\n");
+	}
+	
+	//-----------------------------------------------------------------------------------
+	*/
 	
 	int counter = 0;
 	if (DEBUG)
@@ -153,10 +193,32 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			packet * sendPacket = new packet();
 			
 			if (DEBUG)
-				cout<<"Read buf: "<<buf<<std::endl;
-			
+			{
+				int i = 0;
+				while (i < 256)
+				{
+					cout<<"buf["<<i<<"]: "<<buf[i]<<" ascii value:"<<(int)buf[i]<<std::endl;
+					i++;
+				}
+			}
 			sendPacket->endPhoto = CONT_PACKET;
-			strncpy(sendPacket->payload, buf, 256);
+			//strncpy(sendPacket->payload, buf, 256);
+			int tempCount = 0;
+			while (tempCount<CHUNK_SIZE)
+			{
+				sendPacket->payload[tempCount] = buf[tempCount];
+				tempCount++;
+			}
+			if (DEBUG)
+			{
+				tempCount = 0;
+				while (tempCount < 256)
+				{
+					cout<<"payload["<<tempCount<<"]: "<<sendPacket->payload[tempCount]<<" ascii value:"<<(int)(sendPacket->payload[tempCount])<<std::endl;
+					tempCount++;
+				}
+			}
+			testWritePacket(*sendPacket);
 			frame recvFrame = dll_send(*sendPacket);
 			//Wait on nwl_ACK (Process recvFrame)
 			if (DEBUG)
@@ -188,57 +250,63 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 
 void nwl_recv()																														//Alexi Kessler
 {
-	//Waits for a 
+	//This may not actually be necessary
 }
 
 frame dll_send(packet pkt)																											//Alexi Kessler
 {
-	bool endPhoto;
+	bool endPhoto;																													//Values for converting packet to frame																							
 	char givenArray[CHUNK_SIZE];
 	char framePayload[MAX_FRAME_PAYLOAD];
 	if (pkt.endPhoto == END_PACKET)
-	{
 		endPhoto = true;
-	}
 	else 
-	{
 		endPhoto = false;
+	int tempCount = 0;
+	while (tempCount<CHUNK_SIZE)
+	{
+		givenArray[tempCount] = pkt.payload[tempCount];
+		tempCount++;
 	}
-	strncpy(givenArray, pkt.payload, CHUNK_SIZE);
-	int i = 0;
-	int counter = 0;
+	int i = 0;																														//Place in packet payload
+	int counter = 0;																												//Place in frame payload
 	
 	while (i < CHUNK_SIZE)																											//Go byte by byte through the packet
 	{
 		if (counter < MAX_FRAME_PAYLOAD)
 		{
-			framePayload[counter] = givenArray[i];
+			framePayload[counter] = givenArray[i];																					//Fill frame payload
 			counter++;
 		}
-		else																														//Filled a frame, send it along and start new frame
+		else																														//Enough for a frame payload, make into frame and start new frame
 		{
-			frame* sendFrame = new frame();
+			frame* sendFrame = new frame();																																													
 			
 			sendFrame->seqNumber = sequenceNumber;
 			sequenceNumber++;
 			sendFrame->frameType = DATA_FRAME;
 			if (endPhoto)
-				sendFrame->EOP = END_PACKET;
+				sendFrame->EOP = END_PACKET;																						//TO DO: Revisit this 
 			else 
 				sendFrame->EOP = CONT_PACKET;
 			sendFrame->dataLength = counter;																						//Should be 130
-			strncpy(sendFrame->payload, framePayload, MAX_FRAME_PAYLOAD);
+			tempCount = 0;
+			while (tempCount<CHUNK_SIZE)
+			{
+				sendFrame->payload[tempCount] = framePayload[tempCount];
+				tempCount++;
+			}
 			sendFrame->ED = 0; 																										//Placeholder, actual Error Detect Create takes place right before sending
-			phl_send(*sendFrame);
+			phl_send(*sendFrame);																									//Send final frame
 			counter = 0;
 			int waitRes = waitEvent();
-			if (waitRes == 0)							//Time out
+			if (waitRes == 0)																										//Time out. Need to retransmit
 			{
 				cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
 				//Retransmit
 				//Start new timer
 			}
-			else if (waitRes > 0)
+			else if (waitRes > 0)																									//Received response before time out. Check if ack
 			{
 				frame* recvFrame = new frame();
 				*recvFrame = dll_recv();
@@ -248,7 +316,6 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		}
 		i++;
 	}
-	
 	if (counter!= 0)																												//Finished parsing packet, some data leftover. Put in frame
 	{
 		frame* sendFrame = new frame;
@@ -292,18 +359,18 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		//If frm
 			//return nwl_ack
 	//Wait on nwl_ack
-	frame * emptyFrame = new frame();				//This is just for compilaiton purposes
+	frame * emptyFrame = new frame();																								//This is just for compilaiton purposes. Should never actually return
 	return *emptyFrame;
 }
 
-frame dll_recv()            																											//Alexi Kessler
+frame dll_recv()            																										//Alexi Kessler
 {
 	frame* returnFrame = new frame();
 	char* phlChar;
 	phlChar = phl_recv();
 	if (DEBUG)
 		cout<<"Received: "<<phlChar<<std::endl;
-	//returnFrame = bufToFrame(phlChar);
+	//returnFrame = bufToFrame(phlChar);					//TO DO: Fill this out
 	return *returnFrame;
 }
 
@@ -463,19 +530,19 @@ int waitEvent()																														//Alexi Kessler
 	fd_set readset;
 	struct timeval tv;
 	
-	FD_ZERO (&readset);
-	FD_SET (sockfd, &readset);
+	FD_ZERO (&readset);																												//Zero out readset
+	FD_SET (sockfd, &readset);																										//Add sockfd to readset
 	
-	tv.tv_sec = 4;
+	tv.tv_sec = 4;																													//Set wait time
 	tv.tv_usec = MAX_WAIT_TIME;
 	
-	returnVal = select(1, &readset, NULL, NULL, &tv);
+	returnVal = select(1, &readset, NULL, NULL, &tv);																				//Begin monitoring readset
 	
-	if (returnVal < 0)
+	if (returnVal < 0)																												//Something went wrong
 	{
 		//TO DO: ERROR HANDLING
 	}
-	else if (returnVal > 0)
+	else if (returnVal > 0)																											//Change in socket, ready for recv()
 	{
 		if (DEBUG)
 		{
@@ -549,7 +616,7 @@ short int errorDetectCreate(char* info, int infoLength)																				//Ale
 			}
 		}
 	}
-	retVal = XOR[0] << 8 | XOR[1];			//NEED TO TEST ENDIANNESS																//Turn XOR char array into short int
+	retVal = XOR[0] << 8 | XOR[1];			//TO DO: NEED TO TEST ENDIANNESS														//Turn XOR char array into short int
 	if (DEBUG)
 	{
 		cout<<"Created XOR value of: "<<retVal<<std::endl;
@@ -604,19 +671,14 @@ void testSendFrame ()																												//Alexi Kessler
 	
 		i+=1;
 	}
-	
 	if (DEBUG)
 	{
 		cout<<"String to send before adding ED: "<<sendChar<<std::endl;
 	}
-	
 	cout<<"Calling errorDetectCreate with sendChar and length: "<<strlen(sendChar)<<std::endl;
 	test->ED = errorDetectCreate(sendChar, strlen(sendChar));
-	
 	sprintf(tempBuf, "%hi", test->ED);
-	
 	strcat(sendChar, tempBuf);
-	
 	if (DEBUG)
 	{
 		cout<<"String to send: "<<sendChar<<std::endl;
@@ -646,7 +708,7 @@ void printFrame (frame fr)																											//Alexi Kessler
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
 }
 
-frame makeTestFrame (char frType)																												//Alexi Kessler
+frame makeTestFrame (char frType)																									//Alexi Kessler
 {
 	frame* fr = new frame();
 	fr->seqNumber = 12;
@@ -661,7 +723,7 @@ frame makeTestFrame (char frType)																												//Alexi Kessler
 		counter++;
 	}
 	cout<<"Set payload values"<<std::endl;
-	fr->ED = 2391;																																//Placeholder, actual value added before send
+	fr->ED = 2391;																													//Placeholder, actual value added before send
 	return *fr;
 }
 
@@ -685,5 +747,11 @@ void testPrintPhoto (std::string loc)
 		cout<<"Char "<<n<<": "<<code[n]<<std::endl;
 		n++;
 	}
+}
+
+void testWritePacket(packet packet)																									//Alexi Kessler
+{
+	std::ofstream outfile ("new.txt",std::ofstream::binary);
+	outfile.write (packet.payload, 256);
 }
 
