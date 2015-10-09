@@ -117,10 +117,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	int connectRes = phl_connect(serverAddress, portNumber, serverName);
 	if (DEBUG)
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
-	
-	//testSendMessage();
-	//testSendFrame(); 
-	
+
 	for (count = 0; count<numPhoto; count++)
 	{																																//Set new readLoc
 		readLoc = "photo";
@@ -143,57 +140,19 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 {
 	std::ifstream stream (fileName.c_str(), std::ifstream::binary);
 	char buf[300];
-	char currChar;
-	
-	/*
-	//-------------------------------------------------------------------------TO DO: No matter how this is done, fills packet with NULL characters. Why?-------------
-	int rfile;
-	int rd_size;
-	int count = 0;
-	char tempBuf[300];
-	if ((rfile = open(fileName.c_str(), O_RDONLY)) < 0)
-	{
-		perror("Input File Open Error");
-		exit(1);
-	}
- 
-	while (((rd_size = read(rfile, tempBuf, 256)) > 0) && (count < 1))
-	{
-		packet * sendPacket = new packet();
-			
-		if (DEBUG)
-			cout<<"Read buf: "<<tempBuf<<std::endl;
-		
-		sendPacket->endPhoto = CONT_PACKET;
-		strncpy(sendPacket->payload, tempBuf, 256);
-		testWritePacket(*sendPacket);
-		count++;
-	}
-	if (rd_size < 0)
-	{
-		DieWithError("File read error");
-	}
-	else
-	{
-		printf ("Reach the end of the file\n");
-	}
-	
-	//-----------------------------------------------------------------------------------
-	*/
-	
 	int counter = 0;
 	if (DEBUG)
 		cout<<"Starting read"<<std::endl;
 	while (stream)
 	{
 		stream.read(buf, 256);
-		cout<<"buf: "<<buf<<std::endl;
+		if (DEBUG)
+			cout<<"Read packet, processing"<<std::endl;
 		if ((stream.gcount()) == 256)
 		{
 			packet * sendPacket = new packet();
 			
 			sendPacket->endPhoto = CONT_PACKET;
-			//strncpy(sendPacket->payload, buf, 256);
 			int tempCount = 0;
 			while (tempCount<CHUNK_SIZE)
 			{
@@ -205,7 +164,7 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 				tempCount = 0;
 				while (tempCount < 256)
 				{
-					cout<<"Packet payload["<<tempCount<<"]: "<<sendPacket->payload[tempCount]<<" ascii value:"<<(int)(sendPacket->payload[tempCount])<<std::endl;
+					//cout<<"Packet payload["<<tempCount<<"]: "<<sendPacket->payload[tempCount]<<" ascii value:"<<(int)(sendPacket->payload[tempCount])<<std::endl;
 					tempCount++;
 				}
 			}
@@ -495,25 +454,31 @@ void phl_send(frame fr)																												//Alexi Kessler
 		DieWithError("Error converting ED to string");
 	length += 6;
 	strcat(sendChar, tempBuf);
-	
-	if (DEBUG)
-	{
-		cout<<"String to send: "<<sendChar<<std::endl;
-	}
 	//int sendLength = strlen(sendChar);
 	
 	int sendRes = 0;
 	sendRes = send(sockfd, (void*)sendChar, length, 0);
+	if (DEBUG)
+	{
+		if (sendRes != length)
+			cout<<"Send failed, different number of bytes sent. Expected: "<<length<<" Sent: "<<sendRes<<std::endl;
+		else
+			cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
+	}
 	if (sendRes != length)
-		cout<<"Send failed, different number of bytes sent. Expected: "<<length<<" Sent: "<<sendRes<<std::endl;
-	else
-		cout<<"Send successful! Sent "<<sendRes<<" bytes!"<<std::endl;
+		DieWithError("Failed send");
 	
 	//Quick hacky test
 	char buff[260];
 	int bytes = 0;
+	int z = 0;
 	bytes = recv(sockfd, recvBuf, 260-1, 0);
-	cout<<"Buf: "<<buff<<std::endl;
+	cout<<"Bytes Received:"<<bytes<<std::endl;
+	while (z < bytes)
+	{
+		cout<<"Received["<<z<<"]: "<<buff[z]<<" ascii value: "<<(int)buff[z]<<std::endl;
+		z++;
+	}
 }	//TO DO: Test this 
 
 char* phl_recv()																													//Alexi Kessler
@@ -709,7 +674,7 @@ void printFrame (frame fr)																											//Alexi Kessler
 	
 	while (i < MAX_FRAME_PAYLOAD)
 	{
-		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
+		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" ascii value:"<<(int)fr.payload[i]<<std::endl;
 		i++;
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
@@ -734,7 +699,7 @@ frame makeTestFrame (char frType)																									//Alexi Kessler
 	return *fr;
 }
 
-void testPrintPhoto (std::string loc)
+void testPrintPhoto (std::string loc)																								//Alexi Kessler
 {
 	FILE *file = fopen(loc.c_str(), "r");
     char code[1000];
