@@ -26,7 +26,15 @@
 #define END_PACKET 'E'
 #define CONT_PACKET 'C'
 #define MAX_WAIT_TIME 750
-#define SIZE_RECEIVING_BUFFER 400         //TODO: Change this to a more appropriate number
+#define SIZE_RECEIVING_BUFFER 400         																							//TODO: Change this to a more appropriate number
+																																	//Sizes for frame parsing
+#define FRAME_TYPE_SIZE 1
+#define SEQ_NUM_SIZE 5
+#define EOP_SIZE 1
+#define PAYLOAD_SIZE 130
+#define ERRD_SIZE 6
+#define MAX_FRAME_PAYLOAD 130
+#define USABLE_BYTES 5
 
 using namespace std;
 
@@ -56,13 +64,16 @@ bool DEBUG = true;
 int sockfd = 0;
 short int sequenceNumber = 0;
 char recvBuf[SIZE_RECEIVING_BUFFER];
+//Logging variables
+std::ofstream logFile;
+std::string logLoc;
+int numPacketsSent = 1;													//Starting value is 1 so incrementing can happen after logging
+int numFramesSent = 1;													//Starting value is 1 so incrementing can happen after logging
 //Misc global var(s)
-std::ofstream fileStream;
 fd_set readset;
 
 //Network layer functions
 void nwl_read(std::string fileName);
-void nwl_recv();
 //Data Link layer functions
 frame dll_send(packet pkt);
 frame dll_recv();
@@ -85,6 +96,7 @@ int waitEvent();
 frame makeTestFrame (char frType);																									//Make temporary frame for testing purposes
 void testPrintPhoto (std::string loc);
 void testWritePacket (packet packet);
+frame* read_frame(char* buffer);								//TO DO:Rearrange these categories
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -102,23 +114,43 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	std::stringstream manipStream;
 	
 	//------------------------------------------------------------------------INIT VARIABLES---------------------------------------------------------------------------
-	if (argc != 4)
+	if ((argc != 4) || ((strlen(argv[2]))!=4) || ((strlen(argv[3]))!=2))
 	{
 		cout<<"Proper usage is ./client [hostname] [client id] [number of photos to be read]"<<std::endl;
+		cout<<"Client id must be of length 4, number of photos must be of length 2"<<std::endl;
+		cout<<"Example: ./client CCCWORK4.WPI.EDU 0023 06"<<std::endl;
 		exit(3);
-	} 
+	}
 	
 	serverName = argv[1];
 	cId = atoi(argv[2]);
 	numPhoto = atoi(argv[3]);
 	
+	logLoc = "client_";
+	manipStream<<cId<<".log";
+	logLoc.append(manipStream.str());
+	manipStream.str(std::string());					//Reset manipStream
+	logFile.open(logLoc.c_str());
+	
 	//------------------------------------------------------------------------BEGIN PHOTO READ---------------------------------------------------------------------------
-	
-	int count = 0;
-	
 	std::string readLoc; 
+	std::string initSendString;
+	int count = 0;
 
+	manipStream<<cId;													//Construct initial string to send, containing cId and numPhoto
+	initSendString.append(manipStream.str());
+	manipStream.str(std::string());												//Reset manipStream
+	manipStream<<numPhoto;
+	if (numPhoto < 10)
+		initSendString.append("0");
+	initSendString.append(manipStream.str());
+	manipStream.str(std::string());											//Reset manipStream
+	
 	int connectRes = phl_connect(serverAddress, portNumber, serverName);
+	int initSend = 	send(sockfd, initSendString.c_str(), strlen(initSendString.c_str()), 0);
+	if (initSend != strlen(initSendString.c_str()))
+		DieWithError("Initial send failed");
+	
 	if (DEBUG)
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 
@@ -163,22 +195,14 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 				sendPacket->payload[tempCount] = buf[tempCount];
 				tempCount++;
 			}
-			if (DEBUG)
-			{
-				tempCount = 0;
-				while (tempCount < 256)
-				{
-					//cout<<"Packet payload["<<tempCount<<"]: "<<sendPacket->payload[tempCount]<<" ascii value:"<<(int)(sendPacket->payload[tempCount])<<std::endl;
-					tempCount++;
-				}
-			}
 			testWritePacket(*sendPacket);
 			frame recvFrame = dll_send(*sendPacket);
+			
 			//Wait on nwl_ACK (Process recvFrame)
-			if (DEBUG)
+			if (DEBUG)											//Temporary limiter for testing purposes
 			{
 				counter++;
-				if (counter > 0)
+				if (counter > 2)
 					DieWithError("Done test");
 			}
 		} 
@@ -190,6 +214,10 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			sendPacket->endPhoto = END_PACKET;
 			strncpy(sendPacket->payload, buf, (size_t)(stream.gcount()));
 			frame recvFrame = dll_send(*sendPacket);
+			
+			logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
+			numPacketsSent++;
+			
 			//Wait on nwl_ACK (Process recvFrame)
 			if (DEBUG)
 			{
@@ -202,16 +230,17 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 	cout<<"Reached end of file"<<std::endl;
 }
 
-void nwl_recv()																														//Alexi Kessler
-{
-	//This may not actually be necessary
-}
-
 frame dll_send(packet pkt)																											//Alexi Kessler
 {
 	bool endPhoto;																													//Values for converting packet to frame																							
 	char givenArray[CHUNK_SIZE];
 	char framePayload[MAX_FRAME_PAYLOAD];
+	int startFrameNumber = numFramesSent;
+	
+																		//Initial logging
+	logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
+	numPacketsSent++;
+	
 	if (pkt.endPhoto == END_PACKET)
 		endPhoto = true;
 	else 
@@ -252,6 +281,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			}
 			sendFrame->ED = 0; 																										//Placeholder, actual Error Detect Create takes place right before sending
 			phl_send(*sendFrame);																									//Send final frame
+			
+			numFramesSent++;
+			logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+			
 			counter = 0;
 			int waitRes = waitEvent();
 			if (waitRes == 0)																										//Time out. Need to retransmit
@@ -263,7 +296,11 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 					if (DEBUG)
 						cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
 					phl_send(*sendFrame);
-					int waitRes = waitEvent();
+					
+					logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
+					<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+					
+					waitRes = waitEvent();
 				}
 				if (waitRes > 0)
 				{
@@ -288,7 +325,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				cout<<"Finished receive"<<std::endl;
 				//TO DO: Remove when done testing 
 				
-				frame* recvFrame = new frame();
+				//frame* recvFrame = new frame();
 				//*recvFrame = dll_recv();
 				//Check if ack or frame
 					//Check if right ack
@@ -313,6 +350,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		}
 		sendFrame->ED = 0; 																											//Placeholder, actual Error Detect Create takes place right before sending
 		phl_send(*sendFrame);
+		
+		numFramesSent++;
+		logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+		
 		int waitRes = waitEvent();
 		if (waitRes == 0)							//Time out
 		{
@@ -323,7 +364,11 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				if (DEBUG)
 					cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
 				phl_send(*sendFrame);
-				int waitRes = waitEvent();
+				
+				logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
+					<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+					
+				waitRes = waitEvent();
 			}
 			if (waitRes > 0)
 			{
@@ -580,7 +625,6 @@ int waitEvent()																														//Alexi Kessler
 		if (DEBUG)
 		{
 			cout<<"waitEvent found that socket changed"<<std::endl;
-			cout<<"waitEvent result: "<<returnVal<<std::endl;
 		}
 		FD_ZERO (&readset);
 	}
@@ -737,7 +781,10 @@ void printFrame (frame fr)																											//Alexi Kessler
 	
 	while (i < MAX_FRAME_PAYLOAD)
 	{
-		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" ascii value:"<<(int)fr.payload[i]<<std::endl;
+		if (fr.payload[i] == 5)
+			cout<<"Frame Payload["<<i<<"]: "<<"Ctrl+E"<<" ascii value:"<<(int)fr.payload[i]<<std::endl;
+		else
+			cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" ascii value:"<<(int)fr.payload[i]<<std::endl;
 		i++;
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
@@ -790,4 +837,155 @@ void testWritePacket(packet packet)																									//Alexi Kessler
 	outfile.write (packet.payload, 256);
 }
 
+frame* read_frame(char* buffer){																									//Juan Rodriguez
+	frame* new_frame = new frame();
+	
+	int i = 0;
+	int place = 0;
+	int startFrameType = SEQ_NUM_SIZE;
+	int startEOP = startFrameType + FRAME_TYPE_SIZE;
+	int startUsableBytes = startEOP + EOP_SIZE;
+	int startPayload = startUsableBytes + USABLE_BYTES;
+	int startERRD = startPayload + PAYLOAD_SIZE;
+	char seq_num[SEQ_NUM_SIZE + 1];
+	char frameType;
+	char usable_b[USABLE_BYTES + 1];
+	char ED[ERRD_SIZE + 1];
+	char payload[130];
+		
+	memset(seq_num, 0, strlen(seq_num));
+	
+	cout<<"Parsing sequence number...\n";
+	while (i < place+SEQ_NUM_SIZE){
+		
+		if(DEBUG)
+		{
+			cout<<"Value of i: "<<i<<" Value of place: "<<place<<std::endl;
+			cout<<"Starting copy..."<<std::endl;
+		}
+		strncat(&seq_num[i], &buffer[i], 1);
+		
+		if(DEBUG){
+			cout<<"\nValue of SEQ_NUM: "<<seq_num<<std::endl;
+		}
+		i++;	
+	}
+	seq_num[SEQ_NUM_SIZE] = '\0';
+	cout<<"Parsed sequence number: "<<seq_num<<std::endl;
+	
+	if(DEBUG){
+		cout<<"Value i: "<<i<<std::endl;
+	}
+	place=i;
+	
+	cout<<"Parsing frame type...\n";
+	while (i< place+FRAME_TYPE_SIZE)
+	{
+		strncat(&new_frame->frameType, &buffer[i], 1);
+		i++;
+	}
+	cout<<"Parsed frame type: "<<frameType<<std::endl;
+	
+	if(DEBUG)
+		cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
+	
+	place=i;
+	
+	cout<<"Parsing EOP...\n";
+	while (i < place+EOP_SIZE)
+	{	
+		if(DEBUG)
+			cout<<"EOP while 'i' value: "<<i<<std::endl;
+		
+		strncpy(&new_frame->EOP, &buffer[i], 1);
+		i++;
+	}
+	cout<<"Parsed EOP...\n";
+	place =i;
+	
+	if(DEBUG)
+		cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
+
+	cout<<"Parsing usable bytes...\n";
+	while (i < place+USABLE_BYTES)
+	{
+		if(DEBUG)
+			cout<<"EOP while 'i' value: "<<i<<std::endl;
+		
+		strncpy(&usable_b[i-startUsableBytes], &buffer[i], 1);
+		i++;
+	}
+	usable_b[USABLE_BYTES] = '\0';
+	cout<<"Printing usable_b string: "<<usable_b<<std::endl;
+
+	cout<<"Parsed usable bytes...\n";
+	
+	place=i;
+	
+	cout<<"Parsing payload...\n";
+
+	int bytes_rcvd = atoi(usable_b);
+	cout<<bytes_rcvd<<std::endl;
+
+	while (i < place+PAYLOAD_SIZE)
+	{
+		if(DEBUG)
+			cout<<"Value i: "<<i<<std::endl;
+	
+		strncpy(&new_frame->payload[i-startPayload], &buffer[i], 1);
+		i++;
+		
+		if(DEBUG)
+		{
+			cout<<"Value i: "<<i<<std::endl;
+			cout<<"Payload["<<i-startPayload<<"] "<<&payload[i-startPayload]<<std::endl;
+		}
+	}
+	//memset(&new_frame->payload[bytes_rcvd], 0, PAYLOAD_SIZE - bytes_rcvd);
+	cout<<"Parsed payload...\n";
+	
+	place=i;
+	
+	if(DEBUG)
+		cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
+	
+	cout<<"Parsing Error Detection...\n";
+	while(i < place+ERRD_SIZE)
+	{
+		strncpy(&ED[i-startERRD], &buffer[i], 1);
+		i++;
+	}
+	cout<<"Error Detection string: "<<ED<<std::endl;
+	ED[ERRD_SIZE] = '\0';
+
+	int parse = 0;
+	int ignore = 0;
+	while(parse < ERRD_SIZE)
+	{ 
+		if(ED[parse] == '0')
+		{
+			ignore++;
+		}
+		else if(ED[parse] == '-')
+		{
+			break;
+		}
+		parse++;
+	}
+	
+	if(DEBUG)
+	{
+		cout<<"Ignore: "<<ignore<<std::endl;
+		cout<<"Parsed Error Detection Value is: "<<ED<<std::endl;
+	}
+	new_frame->seqNumber = atoi(seq_num);
+	/***********************************NEEDS TO BE CHECKED****************************/
+	//new_frame->payload[PAYLOAD_SIZE] = '\0';
+	
+	new_frame->dataLength = bytes_rcvd;
+	new_frame->ED = atoi(&ED[ignore]);
+	
+	printFrame(*new_frame);
+	return new_frame;	
+}
 
