@@ -58,6 +58,7 @@ short int sequenceNumber = 0;
 char recvBuf[SIZE_RECEIVING_BUFFER];
 //Misc global var(s)
 std::ofstream fileStream;
+fd_set readset;
 
 //Network layer functions
 void nwl_read(std::string fileName);
@@ -70,6 +71,9 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 void phl_send(frame fr);
 char* phl_recv();
 void phl_close();
+//Timer functions
+void startTimer(int fileDescriptor);
+void stopTimer ();
 //Misc functions
 frame bufToFrame(char * buf);
 void DieWithError(char *errorMessage);
@@ -252,14 +256,40 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			int waitRes = waitEvent();
 			if (waitRes == 0)																										//Time out. Need to retransmit
 			{
-				cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
-				//Retransmit
-				//Start new timer
+				if (DEBUG)
+				cout<<"Timed out while waiting for response"<<std::endl;
+				while (waitRes == 0)
+				{
+					if (DEBUG)
+						cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
+					phl_send(*sendFrame);
+					int waitRes = waitEvent();
+				}
+				if (waitRes > 0)
+				{
+					//TO DO: Add full handling of reply
+					if (DEBUG)
+						cout<<"Retransmitted sucessfully, received reply"<<std::endl;
+				}
 			}
 			else if (waitRes > 0)																									//Received response before time out. Check if ack
 			{
+				//Quick hacky test
+				char testBuff[260];
+				int bytes = 0;
+				int z = 0;
+				bytes = recv(sockfd, testBuff, 260-1, 0);
+				cout<<"Bytes Received:"<<bytes<<std::endl;
+				while ((z < bytes) && (testBuff[z] != '\0'))
+				{
+					cout<<"Received["<<z<<"]: "<<testBuff[z]<<" ascii value: "<<(int)testBuff[z]<<std::endl;
+					z++;
+				}
+				cout<<"Finished receive"<<std::endl;
+				//TO DO: Remove when done testing 
+				
 				frame* recvFrame = new frame();
-				*recvFrame = dll_recv();
+				//*recvFrame = dll_recv();
 				//Check if ack or frame
 					//Check if right ack
 			}
@@ -286,19 +316,45 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		int waitRes = waitEvent();
 		if (waitRes == 0)							//Time out
 		{
-			cout<<"TIMED OUT. WE TIMED OUT ON A WAIT"<<std::endl;
-			//Retransmit
-			//Start new timer
+			if (DEBUG)
+				cout<<"Timed out while waiting for response"<<std::endl;
+			while (waitRes == 0)
+			{
+				if (DEBUG)
+					cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
+				phl_send(*sendFrame);
+				int waitRes = waitEvent();
+			}
+			if (waitRes > 0)
+			{
+				//TO DO: Add full handling of reply
+				if (DEBUG)
+					cout<<"Retransmitted sucessfully, received reply"<<std::endl;
+			}
 		}
 		else if (waitRes > 0)
 		{
-			frame* recvFrame = new frame();
-			*recvFrame = dll_recv();
+			//Quick hacky test
+			char testBuff[260];
+			int bytes = 0;
+			int z = 0;
+			bytes = recv(sockfd, testBuff, 260-1, 0);
+			cout<<"Bytes Received:"<<bytes<<std::endl;
+			while (z < bytes)
+			{
+				cout<<"Received["<<z<<"]: "<<testBuff[z]<<" ascii value: "<<(int)testBuff[z]<<std::endl;
+				z++;
+			}
+			cout<<"Finished receive"<<std::endl;
+			//TO DO: Delete when done testing
+			
+			//frame* recvFrame = new frame();
+			//*recvFrame = dll_recv();
 			//Check if ack or frame
 				//Check if right ack
 		}
 	}
-	//------------------------------------------------------------STILL NEED TO ADD TIMER, WAITING, AND ACK --------------------------------
+	//------------------------------------------------------------STILL NEED TO ADD ACK CHECKING ------------------------------------------
 	//TO DO: For each payload
 		//Phl_recv(ack/frm)
 		//If ack
@@ -378,7 +434,8 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 
 void phl_send(frame fr)																												//Alexi Kessler
 {
-	cout<<"Physical layer received frame:"<<std::endl;
+	if (DEBUG)
+		cout<<"Physical layer received frame:"<<std::endl;
 	printFrame(fr);
 	
 	char tempBuf[10];
@@ -462,10 +519,12 @@ void phl_send(frame fr)																												//Alexi Kessler
 	i = 0;
 	while (i<length)
 	{
-		cout<<"sendChar["<<i<<"]: "<<sendChar[i]<<"ascii value:"<<(int)(sendChar[i])<<std::endl;
+		if (sendChar[i] == 5)
+			cout<<"sendChar["<<i<<"]: "<<"Ctrl+E"<<" ascii value:"<<(int)(sendChar[i])<<std::endl;
+		else
+			cout<<"sendChar["<<i<<"]: "<<sendChar[i]<<" ascii value:"<<(int)(sendChar[i])<<std::endl;
 		i++;
 	}
-	//int sendLength = strlen(sendChar);
 	
 	int sendRes = 0;
 	sendRes = send(sockfd, (void*)sendChar, length, 0);
@@ -479,20 +538,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 	if (sendRes != length)
 		DieWithError("Failed send");
 	
-	
-	//Quick hacky test
-	
-	char testBuff[260];
-	int bytes = 0;
-	int z = 0;
-	bytes = recv(sockfd, testBuff, 260-1, 0);
-	cout<<"Bytes Received:"<<bytes<<std::endl;
-	while (z < bytes)
-	{
-		cout<<"Received["<<z<<"]: "<<testBuff[z]<<" ascii value: "<<(int)testBuff[z]<<std::endl;
-		z++;
-	} 
-}	//TO DO: Test this 
+}
 
 char* phl_recv()																													//Alexi Kessler
 {
@@ -518,14 +564,16 @@ int waitEvent()																														//Alexi Kessler
 	FD_ZERO (&readset);																												//Zero out readset
 	FD_SET (sockfd, &readset);																										//Add sockfd to readset
 	
-	tv.tv_sec = 4;																													//Set wait time
+	tv.tv_sec = 1;																													//Set wait time
 	tv.tv_usec = MAX_WAIT_TIME;
 	
-	returnVal = select(1, &readset, NULL, NULL, &tv);																				//Begin monitoring readset
+	if (DEBUG)
+		cout<<"Starting timeout"<<std::endl;
+	returnVal = select(sockfd+1, &readset, NULL, NULL, &tv);																		//Begin monitoring readset
 	
 	if (returnVal < 0)																												//Something went wrong
 	{
-		//TO DO: ERROR HANDLING
+		DieWithError("Select encountered fatal error");
 	}
 	else if (returnVal > 0)																											//Change in socket, ready for recv()
 	{
@@ -536,7 +584,8 @@ int waitEvent()																														//Alexi Kessler
 		}
 		FD_ZERO (&readset);
 	}
-	
+	if (DEBUG)
+		cout<<"Return value of waitEvent: "<<returnVal<<std::endl;
 	return returnVal;
 }
 
@@ -740,4 +789,5 @@ void testWritePacket(packet packet)																									//Alexi Kessler
 	std::ofstream outfile ("new.txt",std::ofstream::binary);
 	outfile.write (packet.payload, 256);
 }
+
 
