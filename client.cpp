@@ -96,7 +96,7 @@ int waitEvent();
 frame makeTestFrame (char frType);																									//Make temporary frame for testing purposes
 void testPrintPhoto (std::string loc);
 void testWritePacket (packet packet);
-frame* read_frame(char* buffer);								//TO DO:Rearrange these categories
+frame* stringToFrame(char* buffer);								//TO DO:Rearrange these categories
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -549,7 +549,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 		sprintf(tempBuf, "000%hi", fr.ED);
 	else if (fr.ED < 10000)
 		sprintf(tempBuf, "00%hi", fr.ED);
-	else if (fr.ED < 100000)
+	else if (fr.ED >= 10000)
 		sprintf(tempBuf, "0%hi", fr.ED);
 	else 
 		DieWithError("Error converting ED to string");
@@ -837,7 +837,7 @@ void testWritePacket(packet packet)																									//Alexi Kessler
 	outfile.write (packet.payload, 256);
 }
 
-frame* read_frame(char* buffer){																									//Juan Rodriguez
+frame* stringToFrame(char* buffer){																									//Slightly adapted from code by Juan Rodriguez
 	frame* new_frame = new frame();
 	
 	int i = 0;
