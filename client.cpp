@@ -481,17 +481,17 @@ void phl_send(frame fr)																												//Alexi Kessler
 	
 	
 	//Quick hacky test
-	/*
-	char buff[260];
+	
+	char testBuff[260];
 	int bytes = 0;
 	int z = 0;
-	bytes = recv(sockfd, recvBuf, 260-1, 0);
+	bytes = recv(sockfd, testBuff, 260-1, 0);
 	cout<<"Bytes Received:"<<bytes<<std::endl;
 	while (z < bytes)
 	{
-		cout<<"Received["<<z<<"]: "<<buff[z]<<" ascii value: "<<(int)buff[z]<<std::endl;
+		cout<<"Received["<<z<<"]: "<<testBuff[z]<<" ascii value: "<<(int)testBuff[z]<<std::endl;
 		z++;
-	} */
+	} 
 }	//TO DO: Test this 
 
 char* phl_recv()																													//Alexi Kessler

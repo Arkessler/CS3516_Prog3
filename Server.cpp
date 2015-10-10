@@ -40,7 +40,7 @@ using namespace std;
 #define MAX_FRAME_PAYLOAD 130
 #define USABLE_BYTES 5
 
-#define DEBUG 0
+#define DEBUG 1
 
 class packet
 {
@@ -136,20 +136,38 @@ for (;;) /* Run forever */{
                 	cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
                 	x++;
                 	}
+					
                 	//Send AK
 					inc_frame = read_frame(buffer);
+					char tempString[40];
+					int temp = 0;
+					while (temp<(i+2))																									//Padding based on i size
+					{
+						tempString[temp] = 'P';
+						temp++;
+					}
+					while (temp<strlen(test_string)+(i+2))
+					{
+						tempString[temp] = test_string[temp-(i+2)];
+						temp++;
+					}
 					//if(inc_frame != NULL){
-						cout<<"Test String: "<<(test_string + i)<<std::endl;
-
-                		if (send(clntSock, test_string + i, strlen(test_string + i), 0) == -1)
-                    	    	perror("send");
+						cout<<"Acknowledgement string to be sent: "<<(tempString)<<std::endl;
+						int sendRes = send(clntSock, tempString, strlen(tempString), 0);
+						if (sendRes < 0)
+							DieWithError("Send failed");
+						else 
+						{
+							if (DEBUG)
+								cout<<"Bytes sent: "<<sendRes<<std::endl;
+						}
 					//}
 
 					tempPacket[i] = inc_frame;					//Store the frames to later build up 
 					i++;
 
 					cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
-					cout<<"i value: "<<i<<std::endl;
+					cout<<"i value after increment: "<<i<<std::endl;
 
 					//printFrame(*inc_frame);
 
