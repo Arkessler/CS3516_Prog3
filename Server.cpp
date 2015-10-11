@@ -31,7 +31,8 @@ using namespace std;
 
 #define MAXPENDING 5 /* Maximum outstanding connection requests */
 #define BUFFSIZE 150   /* Size of receive buffer */
-#define SERVPORT 1199	//Maximun ammount of entries on the list
+#define SERVPORT 1199	
+#define MAX_PACKET_PAYLOAD 256
 #define FRAME_TYPE_SIZE 1
 #define SEQ_NUM_SIZE 5
 #define EOP_SIZE 1
@@ -39,8 +40,13 @@ using namespace std;
 #define ERRD_SIZE 6
 #define MAX_FRAME_PAYLOAD 130
 #define USABLE_BYTES 5
+#define SIZE_CLIENTID 4
+#define SIZE_PNUM 2
 
 #define DEBUG 1
+#define DEBUG_0 0
+#define DEBUG_1 0
+#define DEBUG_2 1
 
 class packet
 {
@@ -62,12 +68,16 @@ class frame
 
 void DieWithError(char *errorMessage); /* Error handling function */
 frame* read_frame(char* buffer);
+void build_packet();
 void printFrame (frame fr);
+void get_init_pck(int client_id,int p_num,char* buffer);
+packet* build_packet(frame* frame_array[]);
+
 
 int main(int argc, char *argv[]){ 
  int bytes_r;
  int pid;
- int i;								//Loop counter
+ int frames_count;								//Loop counter
  char buffer[BUFFSIZE];
  int servSock; 					/*Socket descriptor for server */
  int clntSock; 					/* Socket descriptor for client */
@@ -75,11 +85,16 @@ int main(int argc, char *argv[]){
  struct sockaddr_in ClntAddr; 		/* Client address */
  unsigned short ServPort; 			/* Server port */
  unsigned int clntLen;
- frame* tempPacket[10];
+ frame* frameArray[10];
  char* test_string = "Hello Master";
+ ofstream picture;
+ int client_id, p_num;
+
+ packet* new_packet = new packet();
  
- frame* inc_frame = new frame();
-	ServPort = SERVPORT;			
+
+ServPort = SERVPORT;			
+/* Variables declared*/
 
  /* Create socket for incoming connections */
  if ((servSock = socket (PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
@@ -119,61 +134,126 @@ for (;;) /* Run forever */{
         }
 
         if (pid == 0) { // this is the child process
-        		i = 0;
-                close(servSock); // child doesn't need the listener
-                do{
+        		
+                close(servSock);
 
-                	memset(buffer, 0, sizeof(buffer));
+                if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
+                	        cout<< "Error recieving initial packet\n";
 
-                	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
-                	        cout<< "Error in recv()";
-				
-                	//buffer[bytes_r] = '\0';
-					cout<<"Bytes recieved: "<<bytes_r<<std::endl;
-                	
-                	int x = 0;
-                	while(x < BUFFSIZE){
-                	cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
-                	x++;
-                	}
+               	cout<<"String recieved: :"<<buffer<<std::endl;
+
+               	get_init_pck(client_id, p_num, buffer);
+
+               	//While x < number of photos
+               	int photo_num = 0;
+            do{
+               	
+            	photo_num++;
+               	//do while x < not end of photo
 					
-                	//Send AK
-					inc_frame = read_frame(buffer);
-					char tempString[40];
-					int temp = 0;
-					while (temp<(i+2))																									//Padding based on i size
-					{
-						tempString[temp] = 'P';
-						temp++;
-					}
-					while (temp<strlen(test_string)+(i+2))
-					{
-						tempString[temp] = test_string[temp-(i+2)];
-						temp++;
-					}
-					//if(inc_frame != NULL){
-						cout<<"Acknowledgement string to be sent: "<<(tempString)<<std::endl;
-						int sendRes = send(clntSock, tempString, strlen(tempString), 0);
-						if (sendRes < 0)
-							DieWithError("Send failed");
-						else 
+					
+               		
+               		/*Build file name*/
+               		std::string photo_name;
+
+               		std::stringstream tempStr;
+
+               		photo_name = "photonew";
+	               	tempStr<<client_id;																											//Convert cId to string
+					photo_name.append(tempStr.str());
+					tempStr.str(std::string());																								//Reset tempStr
+					tempStr<<photo_num;																											//Convert count to string
+					photo_name.append(tempStr.str());   																						//THIS MAY NEED TO BE CHANGED TO 1 INSTEAD OF COUNT
+					tempStr.str(std::string());																								//Reset tempStr
+					photo_name.append(".jpg");
+
+					ofstream stream (photo_name.c_str(), std::ofstream::binary);
+               	do{               
+               		frames_count = 0;
+
+               		frame* inc_frame = new frame();
+               		//Recieve frames to form packet
+
+               		cout<<"Beggin packet recieve...\n\n\n";
+
+	                do{
+
+	                	memset(buffer, 0, sizeof(buffer));
+
+	                	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
+	                	        cout<< "Error in recv()";
+					
+	                	//buffer[bytes_r] = '\0';
+						cout<<"Bytes recieved: "<<bytes_r<<std::endl;
+	                	
+	                	
+
+	                	if(DEBUG){               
+	                		int x = 0;
+
+	                		while(x < BUFFSIZE){
+	                		cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
+	                		x++;
+	                		}
+	                	}
+						
+						cout<<"Buffer: "<<buffer<<std::endl;
+	                	//Send AK
+						inc_frame = read_frame(buffer);
+						char tempString[40];
+						int temp = 0;
+
+						while (temp<(frames_count+2))																									//Padding based on i size
 						{
-							if (DEBUG)
-								cout<<"Bytes sent: "<<sendRes<<std::endl;
+							tempString[temp] = 'P';
+							temp++;
 						}
-					//}
+						while (temp<strlen(test_string)+(frames_count+2))
+						{
+							tempString[temp] = test_string[temp-(frames_count+2)];
+							temp++;
+						}
+						//if(inc_frame != NULL){
+							cout<<"Acknowledgement string to be sent: "<<(tempString)<<std::endl;
+							int sendRes = send(clntSock, tempString, strlen(tempString), 0);
+							if (sendRes < 0)
+								DieWithError("Send failed");
 
-					tempPacket[i] = inc_frame;					//Store the frames to later build up 
-					i++;
+							else 
+							{
+								if (DEBUG)
+									cout<<"Bytes sent: "<<sendRes<<std::endl;
+							}
+						//}
 
-					cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
-					cout<<"i value after increment: "<<i<<std::endl;
+						frameArray[frames_count] = inc_frame;					//Store the frames to later build up 
+						frames_count++;
 
-					//printFrame(*inc_frame);
+						//cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
+						cout<<"Frames_count value after increment: "<<frames_count<<std::endl;
 
 
-        		} while(&inc_frame->EOP != "E");
 
+	        		} while(inc_frame->EOP != 'E');
+
+	        		packet* new_packet = new packet();
+
+	        		cout<<"\n\nBuilding packet...\n\n\n";
+	        		new_packet = build_packet(frameArray);
+
+	        		cout<<"\n\nWritting to file...\n\n\n";
+	        		stream.write(new_packet->payload, MAX_FRAME_PAYLOAD);
+
+	        		cout<<"\n\nEnd of photo: "<<new_packet->endPhoto<<std::endl;
+
+
+	        	} while(new_packet->endPhoto != 'E');
+
+	        	stream.close();
+	        	cout<<"\n\nClosed socket...\n\n\n";
+
+	        } while(photo_num < p_num);
+	        	
         	close(clntSock);
             exit(0);
     }
@@ -182,9 +262,8 @@ for (;;) /* Run forever */{
         close(clntSock);  // parent doesn't need this
     }
 
-	
- 	//HandleTCPClient(clntSock, echoBuffer, command);
  }
+
  /* NOT REACHED */
  }
 
@@ -217,13 +296,13 @@ frame* read_frame(char* buffer){
 	cout<<"Parsing sequence number...\n";
 	while (i < place+SEQ_NUM_SIZE){
 		
-		if(DEBUG){
+		if(DEBUG_0){
 		cout<<"Value of i: "<<i<<"\nValue of place: "<<place<<std::endl;
 		cout<<"Starting copy..."<<std::endl;
 		}
 		strncat(&seq_num[i], &buffer[i], 1);
 		
-		if(DEBUG){
+		if(DEBUG_0){
 		cout<<"\nValue of SEQ_NUM: "<<seq_num<<std::endl;
 		}
 		
@@ -232,7 +311,7 @@ frame* read_frame(char* buffer){
 	seq_num[SEQ_NUM_SIZE] = '\0';
 	cout<<"Parsed sequence number: "<<seq_num<<std::endl;
 	
-	if(DEBUG){
+	if(DEBUG_0){
 	cout<<"Value i: "<<i<<std::endl;
 	}
 	
@@ -245,7 +324,7 @@ frame* read_frame(char* buffer){
 	}
 	cout<<"Parsed frame type: "<<frameType<<std::endl;
 	
-	if(DEBUG){
+	if(DEBUG_0){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	}
 	
@@ -254,7 +333,7 @@ frame* read_frame(char* buffer){
 	cout<<"Parsing EOP...\n";
 	while (i < place+EOP_SIZE){
 		
-		if(DEBUG){
+		if(DEBUG_0){
 		cout<<"EOP while 'i' value: "<<i<<std::endl;
 		}
 		
@@ -264,14 +343,14 @@ frame* read_frame(char* buffer){
 	cout<<"Parsed EOP...\n";
 	 place =i;
 	
-	if(DEBUG){
+	if(DEBUG_0){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	}
 	
 	cout<<"Parsing usable bytes...\n";
 	while (i < place+USABLE_BYTES){
 		
-		if(DEBUG){
+		if(DEBUG_0){
 		cout<<"EOP while 'i' value: "<<i<<std::endl;
 		}
 		
@@ -288,18 +367,21 @@ frame* read_frame(char* buffer){
 	cout<<"Parsing payload...\n";
 
 	int bytes_rcvd = atoi(usable_b);
-	cout<<bytes_rcvd<<std::endl;
+
+	if(DEBUG_0)
+		cout<<bytes_rcvd<<std::endl;
+	
 
 	while (i < place+PAYLOAD_SIZE){
 		
-		if(DEBUG){
-		cout<<"Value i: "<<i<<std::endl;
-		}
+		if(DEBUG_0)
+			cout<<"Value i: "<<i<<std::endl;
+		
 		
 		strncpy(&new_frame->payload[i-startPayload], &buffer[i], 1);
 		i++;
 		
-		if(DEBUG){
+		if(DEBUG_0){
 		cout<<"Value i: "<<i<<std::endl;
 		cout<<"Payload["<<i-startPayload<<"] "<<&payload[i-startPayload]<<std::endl;
 		}
@@ -309,7 +391,7 @@ frame* read_frame(char* buffer){
 	
 	place=i;
 	
-	if(DEBUG){
+	if(DEBUG_0){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	}
 	
@@ -318,7 +400,10 @@ frame* read_frame(char* buffer){
 		strncpy(&ED[i-startERRD], &buffer[i], 1);
 		i++;
 	}
+
+	if(DEBUG_0){
 	cout<<"Error Detection string: "<<ED<<std::endl;
+	}
 	ED[ERRD_SIZE] = '\0';
 
 	int parse = 0;
@@ -335,9 +420,10 @@ frame* read_frame(char* buffer){
 		parse++;
 	}
 
+	if(DEBUG_0){
+
 	cout<<"Ignore: "<<ignore<<std::endl;
-	
-	if(DEBUG){
+
 	cout<<"Parsed Error Detection: "<<ED<<std::endl;
 	}
 	
@@ -352,6 +438,91 @@ frame* read_frame(char* buffer){
 	return new_frame;	
 		
 }
+
+packet* build_packet(frame* frame_array[]){
+
+	packet* new_packet = new packet();
+	int frames_processed, bytes_r, total_bytes_r;
+
+	frames_processed = 0;
+	//bytes_r = 0;
+	total_bytes_r = 0;
+
+	//Posibly need to rearrange array
+
+	//while(frames_processed < frames_count){
+	while(total_bytes_r < MAX_PACKET_PAYLOAD){
+		
+		frame* tempFrame = new frame();
+		
+		bytes_r = 0;
+		
+		tempFrame = frame_array[frames_processed];
+
+		cout<<"Processing frame "<<tempFrame->seqNumber<<std::endl;
+
+		printFrame(*tempFrame);
+		//if(total_bytes_r < MAX_PACKET_PAYLOAD){
+			while(bytes_r < tempFrame->usable_bytes){
+				strncpy(&new_packet->payload[total_bytes_r], &tempFrame->payload[bytes_r], 1);
+				
+				bytes_r++;
+				total_bytes_r++;
+				
+				if(DEBUG_2){
+					cout<<"Payload["<<total_bytes_r<<"] "<<(int) new_packet->payload[total_bytes_r]<<std::endl;
+				}
+			}
+		frames_processed++;
+		//total_bytes_r += bytes_r;
+		//}
+
+
+		if(tempFrame->EOP == 'E'){
+
+			cout<<"Reached end of packet\n";
+			break;
+		}
+	}
+
+	return new_packet;
+}
+
+void get_init_pck(int client_id,int p_num,char* buffer){
+	char tempClID[SIZE_CLIENTID];
+	char tempPNUM[SIZE_PNUM];
+	int i, place;
+	int startPNUM = SIZE_CLIENTID;
+
+	i = 0;
+	place = 0;
+	
+	while(i < place+SIZE_CLIENTID){
+		strncpy(&tempClID[i], &buffer[i], 1);
+		i++;
+	}
+	tempClID[SIZE_CLIENTID] = '\0';
+
+	place = i;
+
+	while(i < place + SIZE_PNUM){
+		strncpy(&tempPNUM[i-startPNUM], &buffer[i], 1);
+		i++;
+	}
+
+	if(DEBUG_1){
+		cout<<"Temp num string: "<<tempPNUM<<std::endl;
+	}
+
+	tempPNUM[SIZE_PNUM] = '\0';
+
+	client_id = atoi(tempClID);
+	p_num = atoi(tempPNUM);
+
+	cout<<"Client ID: "<<client_id<<"\n";
+	cout<<"Photo number: "<<p_num<<"\n";
+}
+
 
 void printFrame (frame fr)																											//Alexi Kessler
 {
