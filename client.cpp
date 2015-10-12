@@ -25,6 +25,8 @@
 #define ACK_FRAME 'A'
 #define END_PACKET 'E'
 #define CONT_PACKET 'C'
+#define END_PHOTO 'Y'
+#define CONT_PHOTO 'N'
 #define MAX_WAIT_TIME 750
 #define SIZE_RECEIVING_BUFFER 400         																							//TODO: Change this to a more appropriate number
 																																	//Sizes for frame parsing
@@ -43,6 +45,7 @@ class packet																														//Alexi Kessler
 	public:
 		char payload[256]; 																											//256 bytes long
 		char endPhoto;																												//1 byte long end of photo indicator
+		unsigned short int dataLength;
 };
 
 class frame																															//Alexi Kessler
@@ -53,7 +56,8 @@ class frame																															//Alexi Kessler
 		char EOP;																													//1 byte long
 		unsigned short int dataLength;																								//2 bytes long, used in case payload is not full 130 bytes
 		char payload[130];																											//130 bytes long
-		short int ED;																										//2 bytes long
+		short int ED;																												//2 bytes long
+		char endPhoto;
 };
 
 //typedef enum {frame_arrival} event_type
@@ -67,8 +71,8 @@ char recvBuf[SIZE_RECEIVING_BUFFER];
 //Logging variables
 std::ofstream logFile;
 std::string logLoc;
-int numPacketsSent = 1;													//Starting value is 1 so incrementing can happen after logging
-int numFramesSent = 1;													//Starting value is 1 so incrementing can happen after logging
+int numPacketsSent = 1;																												//Starting value is 1 so incrementing can happen after logging
+int numFramesSent = 1;																												//Starting value is 1 so incrementing can happen after logging
 //Misc global var(s)
 fd_set readset;
 
@@ -96,7 +100,7 @@ int waitEvent();
 frame makeTestFrame (char frType);																									//Make temporary frame for testing purposes
 void testPrintPhoto (std::string loc);
 void testWritePacket (packet packet);
-frame* stringToFrame(char* buffer);								//TO DO:Rearrange these categories
+frame* stringToFrame(char* buffer);																									//TO DO:Rearrange these categories
 
 int main(int argc, char* argv[])																									//Alexi Kessler
 {
@@ -129,7 +133,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	logLoc = "client_";
 	manipStream<<cId<<".log";
 	logLoc.append(manipStream.str());
-	manipStream.str(std::string());					//Reset manipStream
+	manipStream.str(std::string());																									//Reset manipStream
 	logFile.open(logLoc.c_str());
 	
 	//------------------------------------------------------------------------BEGIN PHOTO READ---------------------------------------------------------------------------
@@ -137,17 +141,17 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	std::string initSendString;
 	int count = 0;
 
-	manipStream<<cId;													//Construct initial string to send, containing cId and numPhoto
+	manipStream<<cId;																												//Construct initial string to send, containing cId and numPhoto
 	initSendString.append(manipStream.str());
-	manipStream.str(std::string());												//Reset manipStream
+	manipStream.str(std::string());																									//Reset manipStream
 	manipStream<<numPhoto;
 	if (numPhoto < 10)
-		initSendString.append("0");
+		initSendString.append("0");																									//Pad so that result is 6 characters long
 	initSendString.append(manipStream.str());
-	manipStream.str(std::string());											//Reset manipStream
+	manipStream.str(std::string());																									//Reset manipStream
 	
-	int connectRes = phl_connect(serverAddress, portNumber, serverName);
-	int initSend = 	send(sockfd, initSendString.c_str(), strlen(initSendString.c_str()), 0);
+	int connectRes = phl_connect(serverAddress, portNumber, serverName);															//Establish connection to server
+	int initSend = 	send(sockfd, initSendString.c_str(), strlen(initSendString.c_str()), 0);										//Send initial message
 	if (initSend != strlen(initSendString.c_str()))
 		DieWithError("Initial send failed");
 	
@@ -161,7 +165,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 		readLoc.append(manipStream.str());
 		manipStream.str(std::string());																								//Reset manipStream
 		manipStream<<count;																											//Convert count to string
-		readLoc.append(manipStream.str());   																						//THIS MAY NEED TO BE CHANGED TO 1 INSTEAD OF COUNT
+		readLoc.append(manipStream.str());   																						//TO DO: Figure out if this actually needs to start at 1
 		manipStream.str(std::string());																								//Reset manipStream
 		readLoc.append(".jpg");
 		if (DEBUG)
@@ -179,40 +183,53 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 	int counter = 0;
 	if (DEBUG)
 		cout<<"Starting read"<<std::endl;
-	while (stream)
+	while (stream)																													//While there is something left to read 
 	{
+		int tempCount = 0;
 		stream.read(buf, 256);
 		if (DEBUG)
 			cout<<"Read packet, processing"<<std::endl;
-		if ((stream.gcount()) == 256)
+		if ((stream.gcount()) == 256)																								//If full read of 256 bytes
 		{
-			packet * sendPacket = new packet();
+			packet * sendPacket = new packet();																						//Put read data into new packet
 			
-			sendPacket->endPhoto = CONT_PACKET;
-			int tempCount = 0;
-			while (tempCount<CHUNK_SIZE)
+			sendPacket->endPhoto = CONT_PHOTO;
+			sendPacket->dataLength = 256;
+			tempCount = 0;
+			while (tempCount<CHUNK_SIZE)																			
 			{
 				sendPacket->payload[tempCount] = buf[tempCount];
 				tempCount++;
 			}
-			testWritePacket(*sendPacket);
-			frame recvFrame = dll_send(*sendPacket);
+			testWritePacket(*sendPacket);																
+			frame recvFrame = dll_send(*sendPacket);																				//Send packet to dll and get result
+			
+			logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
+			numPacketsSent++;
 			
 			//Wait on nwl_ACK (Process recvFrame)
-			if (DEBUG)											//Temporary limiter for testing purposes
+			if (DEBUG)																												//Temporary limiter for testing purposes
 			{
 				counter++;
 				if (counter > 2)
 					DieWithError("Done test");
 			}
 		} 
-		else 
+		else 																														//Read less than 256 bytes, signifying end of photo															
 		{
-			cout<<"Read less than 256 bytes."<<std::endl;
+			if (DEBUG)
+				cout<<"Read less than 256 bytes."<<std::endl;
 			packet * sendPacket = new packet();
 			
-			sendPacket->endPhoto = END_PACKET;
-			strncpy(sendPacket->payload, buf, (size_t)(stream.gcount()));
+			sendPacket->endPhoto = END_PHOTO;
+			sendPacket->dataLength = (stream.gcount());
+			
+			tempCount = 0;
+			while (tempCount<(stream.gcount()))																			
+			{
+				sendPacket->payload[tempCount] = buf[tempCount];
+				tempCount++;
+			}
 			frame recvFrame = dll_send(*sendPacket);
 			
 			logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
@@ -221,11 +238,11 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			//Wait on nwl_ACK (Process recvFrame)
 			if (DEBUG)
 			{
-				cout<<"SENT A SINGLE PACKET"<<std::endl;
+				cout<<"Sent final packet of photo"<<std::endl;
 				DieWithError("Done test");
 			}
 		}
-		memset(buf, 0, 300);
+		memset(buf, 0, 300);																										//Clear read buffer
 	}
 	cout<<"Reached end of file"<<std::endl;
 }
@@ -236,10 +253,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	char givenArray[CHUNK_SIZE];
 	char framePayload[MAX_FRAME_PAYLOAD];
 	int startFrameNumber = numFramesSent;
-	
-																		//Initial logging
-	logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
-	numPacketsSent++;
+	unsigned short int lengthPacket = pkt.dataLength;
+																																	
+	logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;														//Initial logging. Placed here to ensure success of 
+	numPacketsSent++;																												//packet send.
 	
 	if (pkt.endPhoto == END_PACKET)
 		endPhoto = true;
@@ -268,7 +285,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			sendFrame->seqNumber = sequenceNumber;
 			sequenceNumber++;
 			sendFrame->frameType = DATA_FRAME;
-			if (endPhoto)
+			if (counter == lengthPacket)
 				sendFrame->EOP = END_PACKET;																						//TO DO: Revisit this 
 			else 
 				sendFrame->EOP = CONT_PACKET;
@@ -280,6 +297,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				tempCount++;
 			}
 			sendFrame->ED = 0; 																										//Placeholder, actual Error Detect Create takes place right before sending
+			if (endPhoto)
+				sendFrame->endPhoto = END_PHOTO;
+			else
+				sendFrame->endPhoto = CONT_PHOTO;
 			phl_send(*sendFrame);																									//Send final frame
 			
 			numFramesSent++;
@@ -349,6 +370,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			tempCount++;
 		}
 		sendFrame->ED = 0; 																											//Placeholder, actual Error Detect Create takes place right before sending
+		if (endPhoto)
+			sendFrame->endPhoto = END_PHOTO;
+		else
+			sendFrame->endPhoto = CONT_PHOTO;
 		phl_send(*sendFrame);
 		
 		numFramesSent++;
@@ -421,7 +446,7 @@ frame dll_recv()            																										//Alexi Kessler
 	phlChar = phl_recv();
 	if (DEBUG)
 		cout<<"Received: "<<phlChar<<std::endl;
-	//returnFrame = bufToFrame(phlChar);					//TO DO: Fill this out
+	returnFrame = stringToFrame(phlChar);																							//TO DO: Test this
 	return *returnFrame;
 }
 
@@ -487,8 +512,8 @@ void phl_send(frame fr)																												//Alexi Kessler
 	char lengthBuf[10];
 	char sendChar[MAX_FRAME_SIZE+40];																								//Char* string to be sent with send()
 	int length = 0;
-	if (fr.seqNumber < 10)
-		sprintf(sendChar, "0000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);														//Start concatting everything into sendChar			
+	if (fr.seqNumber < 10)																											//Pad variables to ensure constant length of sent message
+		sprintf(sendChar, "0000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);														
 	else if (fr.seqNumber < 100)
 		sprintf(sendChar, "000%hi%c%c", fr.seqNumber, fr.frameType, fr.EOP);
 	else if (fr.seqNumber < 1000)
@@ -519,7 +544,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 		length++; 
 		i++;
 	}
-	while (i<130)											//Padding
+	while (i<130)																													//Padding
 	{
 		sendChar[length] = '0';
 		length++;
@@ -554,12 +579,15 @@ void phl_send(frame fr)																												//Alexi Kessler
 	else 
 		DieWithError("Error converting ED to string");
 	i = 0;
-	while (i<6)
+	while (i<6)						//Add error detect value to sendChar
 	{
 		sendChar[length] = tempBuf[i];
 		i++;
 		length++;
 	}
+	
+	sendChar[length] = fr.endPhoto;
+	length++;
 	
 	i = 0;
 	while (i<length)
@@ -570,6 +598,11 @@ void phl_send(frame fr)																												//Alexi Kessler
 			cout<<"sendChar["<<i<<"]: "<<sendChar[i]<<" ascii value:"<<(int)(sendChar[i])<<std::endl;
 		i++;
 	}
+	cout<<"fr.endPhoto: "<<fr.endPhoto<<std::endl;
+	
+	frame* testFrame = new frame();
+	testFrame = stringToFrame(sendChar);
+	printFrame(*testFrame);
 	
 	int sendRes = 0;
 	sendRes = send(sockfd, (void*)sendChar, length, 0);
@@ -788,6 +821,7 @@ void printFrame (frame fr)																											//Alexi Kessler
 		i++;
 	}
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
+	cout<<"End Photo: "<<fr.endPhoto<<std::endl;
 }
 
 frame makeTestFrame (char frType)																									//Alexi Kessler
@@ -833,7 +867,7 @@ void testPrintPhoto (std::string loc)																								//Alexi Kessler
 
 void testWritePacket(packet packet)																									//Alexi Kessler
 {
-	std::ofstream outfile ("new.txt",std::ofstream::binary);
+	std::ofstream outfile ("testWrite.jpg",std::ofstream::binary | std::ofstream::app);
 	outfile.write (packet.payload, 256);
 }
 
@@ -855,109 +889,71 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 		
 	memset(seq_num, 0, strlen(seq_num));
 	
-	cout<<"Parsing sequence number...\n";
+	if (DEBUG)
+		cout<<"Parsing sequence number...\n";
 	while (i < place+SEQ_NUM_SIZE){
 		
-		if(DEBUG)
-		{
-			cout<<"Value of i: "<<i<<" Value of place: "<<place<<std::endl;
-			cout<<"Starting copy..."<<std::endl;
-		}
 		strncat(&seq_num[i], &buffer[i], 1);
-		
-		if(DEBUG){
-			cout<<"\nValue of SEQ_NUM: "<<seq_num<<std::endl;
-		}
 		i++;	
 	}
 	seq_num[SEQ_NUM_SIZE] = '\0';
-	cout<<"Parsed sequence number: "<<seq_num<<std::endl;
 	
-	if(DEBUG){
-		cout<<"Value i: "<<i<<std::endl;
-	}
 	place=i;
 	
-	cout<<"Parsing frame type...\n";
+	if (DEBUG)
+		cout<<"Parsing frame type...\n";
 	while (i< place+FRAME_TYPE_SIZE)
 	{
 		strncat(&new_frame->frameType, &buffer[i], 1);
 		i++;
 	}
-	cout<<"Parsed frame type: "<<frameType<<std::endl;
-	
-	if(DEBUG)
-		cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	
 	place=i;
 	
-	cout<<"Parsing EOP...\n";
+	if (DEBUG)
+		cout<<"Parsing EOP...\n";
 	while (i < place+EOP_SIZE)
 	{	
-		if(DEBUG)
-			cout<<"EOP while 'i' value: "<<i<<std::endl;
-		
 		strncpy(&new_frame->EOP, &buffer[i], 1);
 		i++;
 	}
-	cout<<"Parsed EOP...\n";
 	place =i;
 	
-	if(DEBUG)
-		cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
-
-	cout<<"Parsing usable bytes...\n";
+	if (DEBUG)
+		cout<<"Parsing usable bytes...\n";
 	while (i < place+USABLE_BYTES)
 	{
-		if(DEBUG)
-			cout<<"EOP while 'i' value: "<<i<<std::endl;
-		
 		strncpy(&usable_b[i-startUsableBytes], &buffer[i], 1);
 		i++;
 	}
 	usable_b[USABLE_BYTES] = '\0';
-	cout<<"Printing usable_b string: "<<usable_b<<std::endl;
-
-	cout<<"Parsed usable bytes...\n";
 	
 	place=i;
 	
-	cout<<"Parsing payload...\n";
-
+	if (DEBUG)
+		cout<<"Parsing payload...\n";
 	int bytes_rcvd = atoi(usable_b);
-	cout<<bytes_rcvd<<std::endl;
+	//cout<<bytes_rcvd<<std::endl;
 
 	while (i < place+PAYLOAD_SIZE)
 	{
-		if(DEBUG)
-			cout<<"Value i: "<<i<<std::endl;
-	
 		strncpy(&new_frame->payload[i-startPayload], &buffer[i], 1);
 		i++;
-		
-		if(DEBUG)
-		{
-			cout<<"Value i: "<<i<<std::endl;
-			cout<<"Payload["<<i-startPayload<<"] "<<&payload[i-startPayload]<<std::endl;
-		}
 	}
 	//memset(&new_frame->payload[bytes_rcvd], 0, PAYLOAD_SIZE - bytes_rcvd);
-	cout<<"Parsed payload...\n";
 	
-	place=i;
+	place=i;	
 	
-	if(DEBUG)
-		cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
-	
-	cout<<"Parsing Error Detection...\n";
+	if (DEBUG)
+		cout<<"Parsing Error Detection...\n";
 	while(i < place+ERRD_SIZE)
 	{
 		strncpy(&ED[i-startERRD], &buffer[i], 1);
 		i++;
 	}
-	cout<<"Error Detection string: "<<ED<<std::endl;
-	ED[ERRD_SIZE] = '\0';
 
+	new_frame->endPhoto = buffer[i];
+	
 	int parse = 0;
 	int ignore = 0;
 	while(parse < ERRD_SIZE)
@@ -975,7 +971,6 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 	
 	if(DEBUG)
 	{
-		cout<<"Ignore: "<<ignore<<std::endl;
 		cout<<"Parsed Error Detection Value is: "<<ED<<std::endl;
 	}
 	new_frame->seqNumber = atoi(seq_num);
@@ -985,7 +980,6 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 	new_frame->dataLength = bytes_rcvd;
 	new_frame->ED = atoi(&ED[ignore]);
 	
-	printFrame(*new_frame);
 	return new_frame;	
 }
 
