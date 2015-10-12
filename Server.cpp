@@ -42,16 +42,18 @@ using namespace std;
 #define USABLE_BYTES 5
 #define SIZE_CLIENTID 4
 #define SIZE_PNUM 2
+#define SIZE_ENDPHOTO 1
 
-#define DEBUG 1
+#define DEBUG 0
 #define DEBUG_0 0
-#define DEBUG_1 0
-#define DEBUG_2 1
+#define DEBUG_1 1
+#define DEBUG_2 0
 
 class packet
 {
 	public:
-		char payload[256]; 																											//256 bytes long
+		char payload[256]; 		
+		unsigned char datalenght;																									//256 bytes long
 		char endPhoto;																												//1 byte long end of photo indicator
 };
 
@@ -63,7 +65,8 @@ class frame
 		char EOP;
 		unsigned short int usable_bytes;																													//1 byte long 
 		char payload[MAX_FRAME_PAYLOAD];																											//130 bytes long
-		short int ED;																												//2 bytes long
+		short int ED;			
+		char endPhoto;																									//2 bytes long
 };
 
 void DieWithError(char *errorMessage); /* Error handling function */
@@ -143,7 +146,7 @@ for (;;) /* Run forever */{
                	cout<<"String recieved: :"<<buffer<<std::endl;
 
                	get_init_pck(client_id, p_num, buffer);
-
+               	p_num = 1;
                	//While x < number of photos
                	int photo_num = 0;
             do{
@@ -151,8 +154,6 @@ for (;;) /* Run forever */{
             	photo_num++;
                	//do while x < not end of photo
 					
-					
-               		
                		/*Build file name*/
                		std::string photo_name;
 
@@ -174,7 +175,7 @@ for (;;) /* Run forever */{
                		frame* inc_frame = new frame();
                		//Recieve frames to form packet
 
-               		cout<<"Beggin packet recieve...\n\n\n";
+               		cout<<"\n\nRecieving packet "<<frames_count<<"...\n\n\n";
 
 	                do{
 
@@ -283,6 +284,7 @@ frame* read_frame(char* buffer){
 	int startUsableBytes = startEOP + EOP_SIZE;
 	int startPayload = startUsableBytes + USABLE_BYTES;
 	int startERRD = startPayload + PAYLOAD_SIZE;
+	int startENDP = startERRD + SIZE_ENDPHOTO;
 	char seq_num[SEQ_NUM_SIZE + 1];
 	int ED_temp;
 	char frameType;
@@ -400,7 +402,7 @@ frame* read_frame(char* buffer){
 		strncpy(&ED[i-startERRD], &buffer[i], 1);
 		i++;
 	}
-
+	place = i;
 	if(DEBUG_0){
 	cout<<"Error Detection string: "<<ED<<std::endl;
 	}
@@ -418,6 +420,11 @@ frame* read_frame(char* buffer){
 		}
 		
 		parse++;
+	}
+
+	while(i < place+SIZE_ENDPHOTO){
+		new_frame->endPhoto = buffer[i];
+		i++;
 	}
 
 	if(DEBUG_0){
@@ -464,14 +471,19 @@ packet* build_packet(frame* frame_array[]){
 		printFrame(*tempFrame);
 		//if(total_bytes_r < MAX_PACKET_PAYLOAD){
 			while(bytes_r < tempFrame->usable_bytes){
-				strncpy(&new_packet->payload[total_bytes_r], &tempFrame->payload[bytes_r], 1);
 				
-				bytes_r++;
-				total_bytes_r++;
+				if(DEBUG_2)
+					cout<<"\n\nFrame payload["<<bytes_r<<"] "<<tempFrame->payload[bytes_r]<<std::endl;
+				
+				new_packet->payload[total_bytes_r] = tempFrame->payload[bytes_r];
+				
 				
 				if(DEBUG_2){
 					cout<<"Payload["<<total_bytes_r<<"] "<<(int) new_packet->payload[total_bytes_r]<<std::endl;
 				}
+
+				bytes_r++;
+				total_bytes_r++;
 			}
 		frames_processed++;
 		//total_bytes_r += bytes_r;
@@ -541,5 +553,5 @@ void printFrame (frame fr)																											//Alexi Kessler
 	}
 	*/
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
-	
+	cout<<"End photo:"<<fr.endPhoto<<std::endl;
 }
