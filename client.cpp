@@ -160,7 +160,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	
 	int connectRes = phl_connect(serverAddress, portNumber, serverName);															//Establish connection to server
 	int initSend = 	send(sockfd, initSendString.c_str(), strlen(initSendString.c_str()), 0);										//Send initial message
-	if (initSend != strlen(initSendString.c_str()))
+	if (initSend != (int)strlen(initSendString.c_str()))
 		DieWithError("Initial send failed");
 	
 	if (DEBUG)
@@ -262,7 +262,8 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	char framePayload[MAX_FRAME_PAYLOAD];
 	int startFrameNumber = numFramesSent;
 	unsigned short int lengthPacket = pkt.dataLength;
-																																	
+	bool retransmit = false;
+	
 	logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;														//Initial logging. Placed here to ensure success of 
 	numPacketsSent++;																												//packet send.
 	
@@ -309,74 +310,76 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				sendFrame->endPhoto = END_PHOTO;
 			else
 				sendFrame->endPhoto = CONT_PHOTO;
-			phl_send(*sendFrame);																									//Send final frame
 			
-			numFramesSent++;
-			logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
-				<<numPacketsSent<<" to physical layer"<<std::endl;					//TO DO: TEST IF THIS AFFECTS TIMEOUT
+			do
+			{
+				phl_send(*sendFrame);																									//Send final frame
 			
-			counter = 0;
-			int waitRes = waitEvent();
-			if (waitRes == 0)																										//Time out. Need to retransmit
-			{
-				if (DEBUG)
-				cout<<"Timed out while waiting for response"<<std::endl;
-				while (waitRes == 0)
-				{
-					if (DEBUG)
-						cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
-					phl_send(*sendFrame);
-					
-					logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
-					<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
-					
-					waitRes = waitEvent();
-				}
-				if (waitRes > 0)
-				{
-					//TO DO: Add full handling of reply
-					if (DEBUG)
-						cout<<"Retransmitted sucessfully, received reply"<<std::endl;
-				}
-			}
-			else if (waitRes > 0)																									//Received response before time out. Check if ack
-			{
-				//Quick hacky test
-				char testBuff[260];
-				int bytes = 0;
-				int z = 0;
-				bytes = recv(sockfd, testBuff, 260-1, 0);
-				cout<<"Bytes Received:"<<bytes<<std::endl;
-				while ((z < bytes) && (testBuff[z] != '\0'))
-				{
-					cout<<"Received["<<z<<"]: "<<testBuff[z]<<" ascii value: "<<(int)testBuff[z]<<std::endl;
-					z++;
-				}
-				cout<<"Finished receive"<<std::endl;
-				//TO DO: Remove when done testing 
+				numFramesSent++;
+				logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
+					<<numPacketsSent<<" to physical layer"<<std::endl;					//TO DO: TEST IF THIS AFFECTS TIMEOUT
 				
-				//TEST THIS
-				frame* recvFrame = new frame();
-				*recvFrame = dll_recv();
-				if (recvFrame->frameType == ACK_FRAME)
-				{
-					//If right ack
-						//Continue
-					//If bad ack
-						//Retransmit until good ack
+				counter = 0;
+				int waitRes = waitEvent();
+				if (waitRes == 0)																										//Time out. Need to retransmit
+				{								//MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
+					if (DEBUG)
+					cout<<"Timed out while waiting for response"<<std::endl;
+					while (waitRes == 0)
+					{
+						if (DEBUG)
+							cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
+						phl_send(*sendFrame);
+						
+						logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
+						<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
+						
+						waitRes = waitEvent();
+					}
+					if (waitRes > 0)
+					{
+						//TO DO: Add full handling of reply
+						if (DEBUG)
+							cout<<"Retransmitted sucessfully, received reply"<<std::endl;
+					}
 				}
-				else if (recvFrame->frameType == DATA_FRAME)
+				else if (waitRes > 0)																									//Received response before time out. Check if ack
 				{
-					//If right ack
-						//Nwl_ack
-						//return nwl_ack
-				}
-				else
-					DieWithError("Received frame is invalid");
-			}
-		}
+					//Quick test
+					phl_recv();
+					//TO DO: Remove when done testing 
+					
+					//TEST THIS
+					frame* recvFrame = new frame();
+					*recvFrame = dll_recv();
+					if (recvFrame->frameType == ACK_FRAME)
+					{
+						if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
+							(recvFrame->seqNumber == recvFrame->ED))
+						{
+							if (DEBUG)
+								cout<<"Received valid ACK reply"<<std::endl;
+							retransmit = false;
+						}
+						else
+						{
+							retransmit = true;
+						} 
+					}
+					else if (recvFrame->frameType == DATA_FRAME)
+					{
+						//If right ack
+							//Nwl_ack
+							//return nwl_ack
+					}
+					else
+						DieWithError("Received frame is invalid");
+				}														//end ACK receive 
+			} while (retransmit);										//end frame transmission
+		} 																//end frame construction
 		i++;
 	}
+	//---------------------------------------------------End looping through packet-----------------------------------------------------
 	if (counter!= 0)																												//Finished parsing packet, some data leftover. Put in frame
 	{
 		frame* sendFrame = new frame;
@@ -397,71 +400,80 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			sendFrame->endPhoto = END_PHOTO;
 		else
 			sendFrame->endPhoto = CONT_PHOTO;
-		phl_send(*sendFrame);
-		
-		numFramesSent++;
-		logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
-			<<numPacketsSent<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
-		
-		int waitRes = waitEvent();
-		if (waitRes == 0)																											//Time out
+		do
 		{
-			if (DEBUG)
-				cout<<"Timed out while waiting for response"<<std::endl;
-			while (waitRes == 0)
-			{
-				if (DEBUG)
-					cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
-				phl_send(*sendFrame);
-				
-				logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
-					<<" to physical layer"<<std::endl;								//TO DO: TEST IF THIS AFFECTS TIMEOUT
-					
-				waitRes = waitEvent();
-			}
-			if (waitRes > 0)
-			{
-				//TO DO: Add full handling of reply
-				if (DEBUG)
-					cout<<"Retransmitted sucessfully, received reply"<<std::endl;
-			}
-		}
-		else if (waitRes > 0)
-		{
-			//Quick hacky test
-			char testBuff[260];
-			int bytes = 0;
-			int z = 0;
-			bytes = recv(sockfd, testBuff, 260-1, 0);
-			cout<<"Bytes Received:"<<bytes<<std::endl;
-			while (z < bytes)
-			{
-				cout<<"Received["<<z<<"]: "<<testBuff[z]<<" ascii value: "<<(int)testBuff[z]<<std::endl;
-				z++;
-			}
-			cout<<"Finished receive"<<std::endl;
-			//TO DO: Delete when done testing
+			phl_send(*sendFrame);
 			
-			//TEST THIS
-			frame* recvFrame = new frame();
-			*recvFrame = dll_recv();
-			if (recvFrame->frameType == ACK_FRAME)
-			{
-				//If right ack
-					//Continue
-				//If bad ack
-					//Retransmit until good ack
+			numFramesSent++;
+			logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
+				<<numPacketsSent<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
+			
+			int waitRes = waitEvent();
+			if (waitRes == 0)																											//Time out
+			{										//MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
+				if (DEBUG)
+					cout<<"Timed out while waiting for response"<<std::endl;
+				while (waitRes == 0)
+				{
+					if (DEBUG)
+						cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
+					phl_send(*sendFrame);
+					
+					logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
+						<<" to physical layer"<<std::endl;								//TO DO: TEST IF THIS AFFECTS TIMEOUT
+						
+					waitRes = waitEvent();
+				}
+				if (waitRes > 0)
+				{
+					//TO DO: Add full handling of reply
+					if (DEBUG)
+						cout<<"Retransmitted sucessfully, received reply"<<std::endl;
+				}
 			}
-			else if (recvFrame->frameType == DATA_FRAME)
+			else if (waitRes > 0)
 			{
-				//If right ack
-					//Nwl_ack
-					//return nwl_ack
-			}
-			else
-				DieWithError("Received frame is invalid");
-		}
-	}
+				//Quick test
+				phl_recv();
+				//TO DO: Delete when done testing
+				
+				//TEST THIS
+				frame* recvFrame = new frame();
+				*recvFrame = dll_recv();
+				if (recvFrame->frameType == ACK_FRAME)
+				{
+					if (recvFrame->frameType == ACK_FRAME)
+					{
+						if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
+							(recvFrame->seqNumber == recvFrame->ED))
+						{
+							if (DEBUG)
+								cout<<"Received valid ACK reply"<<std::endl;
+							retransmit = false;
+						}
+						else
+						{
+							retransmit = true;
+						} 
+					}
+					else if (recvFrame->frameType == DATA_FRAME)
+					{
+						//If right ack
+							//Nwl_ack
+							//return nwl_ack
+					}
+				}
+				else if (recvFrame->frameType == DATA_FRAME)
+				{
+					//If right ack
+						//Nwl_ack
+						//return nwl_ack
+				}
+				else
+					DieWithError("Received frame is invalid");
+			}																														//end ACK receive 									
+		} while (retransmit);																										//end frame transmission
+	}																																//end frame construction
 	//Wait on nwl_ack
 	frame * emptyFrame = new frame();																								//This is just for compilaiton purposes. Should never actually return
 	return *emptyFrame;
@@ -650,10 +662,20 @@ void phl_send(frame fr)																												//Alexi Kessler
 char* phl_recv()																													//Alexi Kessler
 {
 	int bytesReceived;									
+	int z = 0;
 	
 	bytesReceived = recv(sockfd, recvBuf, SIZE_RECEIVING_BUFFER-1, 0);
 	if (bytesReceived <= 0)
 		DieWithError("Issue with phl_recv");
+	if (DEBUG)
+	{
+		while (z < bytesReceived)
+		{
+			cout<<"Received["<<z<<"]: "<<recvBuf[z]<<" ascii value: "<<(int)recvBuf[z]<<std::endl;
+			z++;
+		}
+	}
+	
 	return recvBuf;	
 }
 	
