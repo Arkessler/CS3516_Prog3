@@ -28,6 +28,13 @@ using namespace std;
 #include <string.h> /* for memset() */
 #include <unistd.h> /* for close() */
 
+#define DATA_FRAME 'D'
+#define ACK_FRAME 'A'
+#define END_PACKET 'E'
+#define CONT_PACKET 'C'
+#define END_PHOTO 'Y'
+#define CONT_PHOTO 'N'
+
 
 #define MAXPENDING 5 /* Maximum outstanding connection requests */
 #define BUFFSIZE 150   /* Size of receive buffer */
@@ -75,6 +82,8 @@ void build_packet();
 void printFrame (frame fr);
 void get_init_pck(int client_id,int p_num,char* buffer);
 packet* build_packet(frame* frame_array[]);
+void printPacket(packet pck);
+void build_frame_ack(frame* frame_recieved,char* ack_frame);
 
 
 int main(int argc, char *argv[]){ 
@@ -92,6 +101,7 @@ int main(int argc, char *argv[]){
  char* test_string = "Hello Master";
  ofstream picture;
  int client_id, p_num;
+ int frame_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO;
 
  packet* new_packet = new packet();
  
@@ -159,6 +169,8 @@ for (;;) /* Run forever */{
 
                		std::stringstream tempStr;
 
+               		tempStr.str(std::string());	
+
                		photo_name = "photonew";
 	               	tempStr<<client_id;																											//Convert cId to string
 					photo_name.append(tempStr.str());
@@ -166,16 +178,20 @@ for (;;) /* Run forever */{
 					tempStr<<photo_num;																											//Convert count to string
 					photo_name.append(tempStr.str());   																						//THIS MAY NEED TO BE CHANGED TO 1 INSTEAD OF COUNT
 					tempStr.str(std::string());																								//Reset tempStr
-					photo_name.append(".jpg");
+					photo_name.append(".txt");
 
-					ofstream stream (photo_name.c_str(), std::ofstream::binary);
+					cout<<"Photo name: "<<photo_name<<std::endl;
+
+					ofstream stream (photo_name.c_str(), std::ios::binary|std::ios::app);
+					int packet_count = 0;
                	do{               
+               		packet_count++;
                		frames_count = 0;
 
                		frame* inc_frame = new frame();
                		//Recieve frames to form packet
 
-               		cout<<"\n\nRecieving packet "<<frames_count<<"...\n\n\n";
+               		cout<<"\n\nRecieving packet "<<packet_count<<"...\n\n\n";
 
 	                do{
 
@@ -201,9 +217,10 @@ for (;;) /* Run forever */{
 						cout<<"Buffer: "<<buffer<<std::endl;
 	                	//Send AK
 						inc_frame = read_frame(buffer);
-						char tempString[40];
-						int temp = 0;
 
+						int frame_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO;
+						char tempString[frame_size];
+						/*
 						while (temp<(frames_count+2))																									//Padding based on i size
 						{
 							tempString[temp] = 'P';
@@ -214,8 +231,14 @@ for (;;) /* Run forever */{
 							tempString[temp] = test_string[temp-(frames_count+2)];
 							temp++;
 						}
+						*/
 						//if(inc_frame != NULL){
-							cout<<"Acknowledgement string to be sent: "<<(tempString)<<std::endl;
+
+							build_frame_ack(inc_frame, tempString);
+
+							cout<<"Frame ack to be sent: "<<tempString<<std::endl;
+
+							//cout<<"Acknowledgement string to be sent: "<<(tempString)<<std::endl;
 							int sendRes = send(clntSock, tempString, strlen(tempString), 0);
 							if (sendRes < 0)
 								DieWithError("Send failed");
@@ -242,8 +265,13 @@ for (;;) /* Run forever */{
 	        		cout<<"\n\nBuilding packet...\n\n\n";
 	        		new_packet = build_packet(frameArray);
 
+	        		cout<<"Printing packet...\n\n\n";
+	        		printPacket(*new_packet);
+
+	        		stream.write("I am so cool", 18);
+
 	        		cout<<"\n\nWritting to file...\n\n\n";
-	        		stream.write(new_packet->payload, MAX_FRAME_PAYLOAD);
+	        		stream.write((*new_packet).payload, MAX_FRAME_PAYLOAD);
 
 	        		cout<<"\n\nEnd of photo: "<<new_packet->endPhoto<<std::endl;
 
@@ -257,16 +285,16 @@ for (;;) /* Run forever */{
 	        	
         	close(clntSock);
             exit(0);
-    }
+    	}
 
         else if (pid > 0){
         close(clntSock);  // parent doesn't need this
     }
 
  }
-
+}
  /* NOT REACHED */
- }
+
 
 void DieWithError(char *errorMessage)
 {
@@ -489,6 +517,9 @@ packet* build_packet(frame* frame_array[]){
 		//total_bytes_r += bytes_r;
 		//}
 
+		if(tempFrame->endPhoto == END_PHOTO){;
+			new_packet->endPhoto = END_PHOTO;
+		}
 
 		if(tempFrame->EOP == 'E'){
 
@@ -535,6 +566,22 @@ void get_init_pck(int client_id,int p_num,char* buffer){
 	cout<<"Photo number: "<<p_num<<"\n";
 }
 
+void printPacket(packet pck){
+
+
+	//cout<<"Packet Payload:"<<std::endl; 
+
+	int i = 0;
+	
+	while (i < MAX_PACKET_PAYLOAD) 
+	{
+		cout<<"packet Payload["<<i<<"]: "<<pck.payload[i]<<" acii value:"<<(int)pck.payload[i]<<std::endl;
+		i++;
+	}
+	
+	//cout<<"Error Detection: "<<fr.ED<<std::endl;
+}
+
 
 void printFrame (frame fr)																											//Alexi Kessler
 {
@@ -554,4 +601,79 @@ void printFrame (frame fr)																											//Alexi Kessler
 	*/
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
 	cout<<"End photo:"<<fr.endPhoto<<std::endl;
+}
+
+void build_frame_ack(frame* frame_recieved, char* ack_frame){
+
+	char tempERRD[ERRD_SIZE+2];
+	char endPhoto = '0';
+	char usable_bytes_buff[USABLE_BYTES+2];
+	//char ack_frame[SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO];
+	char fake_payload[MAX_FRAME_PAYLOAD+ERRD_SIZE+1];
+	int length = 0;
+
+	sprintf(ack_frame, "%04hi%c0", frame_recieved->seqNumber, ACK_FRAME);
+	length += (SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE);
+	
+	sprintf(usable_bytes_buff, "%04hi", 0);
+	
+	strcat(ack_frame, usable_bytes_buff);
+	length += USABLE_BYTES;
+	
+	int i = 0;
+	while (i<(MAX_FRAME_PAYLOAD))
+	{
+		ack_frame[length] = '0';
+		length++; 
+		i++;
+	}
+
+	sprintf(tempERRD, "%05hi", frame_recieved->seqNumber);
+
+	length += ERRD_SIZE;
+
+	strcat(ack_frame, tempERRD);
+	ack_frame[length] = endPhoto;
+
+
+/*
+	while (i<130)											//Padding
+	{
+		sendChar[length] = '0';
+		length++;
+		i++;
+	}
+*/
+
+/*
+	if (DEBUG)
+		cout<<"Calling errorDetectCreate with length: "<<length<<std::endl;
+	fr.ED = errorDetectCreate(sendChar, length);
+	if (DEBUG)
+		cout<<"Successfully generated ED"<<std::endl;
+	if (fr.ED <= -10000)
+		sprintf(tempBuf, "%hi", fr.ED);
+	else if ((fr.ED<=-1000) && (fr.ED>-10000))
+		sprintf(tempBuf, "0%hi", fr.ED);
+	else if ((fr.ED<=-100) && (fr.ED>-1000))
+		sprintf(tempBuf, "00%hi", fr.ED);
+	else if ((fr.ED<=-10) && (fr.ED>-100))
+		sprintf(tempBuf, "000%hi", fr.ED);
+	else if ((fr.ED<0) && (fr.ED>-10))
+		sprintf(tempBuf, "0000%hi", fr.ED);
+	else if (fr.ED < 10)
+		sprintf(tempBuf, "00000%hi", fr.ED);
+	else if (fr.ED < 100)
+		sprintf(tempBuf, "0000%hi", fr.ED);
+	else if (fr.ED < 1000)
+		sprintf(tempBuf, "000%hi", fr.ED);
+	else if (fr.ED < 10000)
+		sprintf(tempBuf, "00%hi", fr.ED);
+	else if (fr.ED >= 10000)
+		sprintf(tempBuf, "0%hi", fr.ED);
+	else 
+		DieWithError("Error converting ED to string");																											//2 bytes long
+*/
+
+	//return ack_frame;
 }
