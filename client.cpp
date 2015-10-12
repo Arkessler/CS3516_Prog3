@@ -346,8 +346,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				else if (waitRes > 0)																									//Received response before time out. Check if ack
 				{
 					//Quick test
-					phl_recv();
-					//TO DO: Remove when done testing 
+					phl_recv(); 
 					
 					//TEST THIS
 					frame* recvFrame = new frame();
@@ -435,7 +434,6 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			{
 				//Quick test
 				phl_recv();
-				//TO DO: Delete when done testing
 				
 				//TEST THIS
 				frame* recvFrame = new frame();
