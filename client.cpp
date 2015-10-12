@@ -40,6 +40,16 @@
 
 using namespace std;
 
+/*-----------------------------------------Functionalities to add---------------------
+Ack received
+Ack checking
+-Proper Seq
+-Error detection
+Frame retransmission with bad ack
+Logging of all events
+Running tally of significant events
+Introduce frame transmission error
+*/
 class packet																														//Alexi Kessler
 {
 	public:
@@ -59,8 +69,6 @@ class frame																															//Alexi Kessler
 		short int ED;																												//2 bytes long
 		char endPhoto;
 };
-
-//typedef enum {frame_arrival} event_type
 
 //Debug variable(s)
 bool DEBUG = true;
@@ -304,7 +312,8 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			phl_send(*sendFrame);																									//Send final frame
 			
 			numFramesSent++;
-			logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+			logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
+				<<numPacketsSent<<" to physical layer"<<std::endl;					//TO DO: TEST IF THIS AFFECTS TIMEOUT
 			
 			counter = 0;
 			int waitRes = waitEvent();
@@ -319,7 +328,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 					phl_send(*sendFrame);
 					
 					logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
-					<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+					<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
 					
 					waitRes = waitEvent();
 				}
@@ -346,10 +355,24 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				cout<<"Finished receive"<<std::endl;
 				//TO DO: Remove when done testing 
 				
-				//frame* recvFrame = new frame();
-				//*recvFrame = dll_recv();
-				//Check if ack or frame
-					//Check if right ack
+				//TEST THIS
+				frame* recvFrame = new frame();
+				*recvFrame = dll_recv();
+				if (recvFrame->frameType == ACK_FRAME)
+				{
+					//If right ack
+						//Continue
+					//If bad ack
+						//Retransmit until good ack
+				}
+				else if (recvFrame->frameType == DATA_FRAME)
+				{
+					//If right ack
+						//Nwl_ack
+						//return nwl_ack
+				}
+				else
+					DieWithError("Received frame is invalid");
 			}
 		}
 		i++;
@@ -377,10 +400,11 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		phl_send(*sendFrame);
 		
 		numFramesSent++;
-		logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+		logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
+			<<numPacketsSent<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
 		
 		int waitRes = waitEvent();
-		if (waitRes == 0)							//Time out
+		if (waitRes == 0)																											//Time out
 		{
 			if (DEBUG)
 				cout<<"Timed out while waiting for response"<<std::endl;
@@ -391,7 +415,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				phl_send(*sendFrame);
 				
 				logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
-					<<" to physical layer"<<std::endl;//TO DO: TEST IF THIS AFFECTS TIMEOUT
+					<<" to physical layer"<<std::endl;								//TO DO: TEST IF THIS AFFECTS TIMEOUT
 					
 				waitRes = waitEvent();
 			}
@@ -418,22 +442,26 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			cout<<"Finished receive"<<std::endl;
 			//TO DO: Delete when done testing
 			
-			//frame* recvFrame = new frame();
-			//*recvFrame = dll_recv();
-			//Check if ack or frame
-				//Check if right ack
+			//TEST THIS
+			frame* recvFrame = new frame();
+			*recvFrame = dll_recv();
+			if (recvFrame->frameType == ACK_FRAME)
+			{
+				//If right ack
+					//Continue
+				//If bad ack
+					//Retransmit until good ack
+			}
+			else if (recvFrame->frameType == DATA_FRAME)
+			{
+				//If right ack
+					//Nwl_ack
+					//return nwl_ack
+			}
+			else
+				DieWithError("Received frame is invalid");
 		}
 	}
-	//------------------------------------------------------------STILL NEED TO ADD ACK CHECKING ------------------------------------------
-	//TO DO: For each payload
-		//Phl_recv(ack/frm)
-		//If ack
-			//If ok 
-				//increment
-			//Else
-				//Retransmit
-		//If frm
-			//return nwl_ack
 	//Wait on nwl_ack
 	frame * emptyFrame = new frame();																								//This is just for compilaiton purposes. Should never actually return
 	return *emptyFrame;
@@ -504,10 +532,11 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 
 void phl_send(frame fr)																												//Alexi Kessler
 {
+	/*
 	if (DEBUG)
 		cout<<"Physical layer received frame:"<<std::endl;
 	printFrame(fr);
-	
+	*/
 	char tempBuf[10];
 	char lengthBuf[10];
 	char sendChar[MAX_FRAME_SIZE+40];																								//Char* string to be sent with send()
@@ -882,10 +911,10 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 	int startPayload = startUsableBytes + USABLE_BYTES;
 	int startERRD = startPayload + PAYLOAD_SIZE;
 	char seq_num[SEQ_NUM_SIZE + 1];
-	char frameType;
+	//char frameType;
 	char usable_b[USABLE_BYTES + 1];
 	char ED[ERRD_SIZE + 1];
-	char payload[130];
+	//char payload[130];
 		
 	memset(seq_num, 0, strlen(seq_num));
 	
