@@ -195,7 +195,11 @@ for (;;) /* Run forever */{
 					//tempStr.str(std::string());																								//Reset tempStr
 					photo_name.append(".txt");
 					
-
+					
+					FILE * zeroOut = fopen(photo_name.c_str(),"w");
+					fprintf(zeroOut, "");
+					fclose(zeroOut);
+					
 					cout<<"Photo name: "<<photo_name<<std::endl;
 
 					
@@ -317,15 +321,22 @@ for (;;) /* Run forever */{
 	        		//printPacket(*new_packet);
 
 
-					cout<<"\nWritting to file...\n";
+					cout<<"\nWriting to file...\n";
 	        		
+					FILE * out = fopen(photo_name.c_str(), "a");
+					int count = 0;
+					while (count < new_packet->datalenght)
+					{
+						fprintf(out, "%c", new_packet->payload[count]);
+						count++;
+					}
+					//fprintf(out, "%s", "\nFinished writing packet\n");
+					fclose(out);
 	        		
-	        		ofstream stream (photo_name.c_str(), std::ofstream::binary|std::ofstream::app);
-	        		
-
+	        		/*ofstream stream (photo_name.c_str(), std::ofstream::binary|std::ofstream::app);
 	        		stream.write(new_packet->payload, new_packet->datalenght);
 
-	        		
+	        		*/
 	        		//stream.write((*new_packet).payload, MAX_FRAME_PAYLOAD);
 
 	        		cout<<"\nEnd of photo: "<<new_packet->endPhoto<<std::endl;

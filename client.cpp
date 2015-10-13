@@ -38,7 +38,7 @@
 #define MAX_FRAME_PAYLOAD 130
 #define USABLE_BYTES 5
 
-#define NUM_TEST_PACKETS 15
+#define NUM_TEST_PACKETS 40
 using namespace std;
 
 /*-----------------------------------------Functionalities to add---------------------
@@ -773,7 +773,6 @@ void phl_send(frame fr)																												//Alexi Kessler
 char* phl_recv()																													//Alexi Kessler
 {
 	int bytesReceived;									
-	int z = 0;
 	
 	bytesReceived = recv(sockfd, recvBuf, SIZE_RECEIVING_BUFFER-1, 0);
 	if (bytesReceived <= 0)
@@ -781,6 +780,8 @@ char* phl_recv()																													//Alexi Kessler
 		cout<<"Recv returned "<<bytesReceived<<std::endl;
 		DieWithError("Issue with phl_recv");
 	}
+	/*
+	int z = 0;
 	if (DEBUG)
 	{
 		cout<<"Received "<<bytesReceived<<" bytes"<<std::endl;
@@ -789,7 +790,7 @@ char* phl_recv()																													//Alexi Kessler
 			cout<<"Received["<<z<<"]: "<<recvBuf[z]<<" ascii value: "<<(int)recvBuf[z]<<std::endl;
 			z++;
 		}
-	}
+	}*/
 	return recvBuf;	
 }
 	
@@ -1026,8 +1027,49 @@ void testPrintPhoto (std::string loc)																								//Alexi Kessler
 
 void testWritePacket(packet packet)																									//Alexi Kessler
 {
-	std::ofstream outfile ("testWrite.jpg",std::ofstream::binary | std::ofstream::app);
+	if (DEBUG)
+		cout<<"WRITING PACKET"<<numPacketsSent<<" TO FILE"<<std::endl;
+	FILE *out = fopen("testWrite.jpg", "a");
+	//fprintf(out, "%s %d\n", "\nWriting packet", numPacketsSent);
+	int count = 0;
+	while (count < packet.dataLength)
+	{
+		fprintf(out, "%c", packet.payload[count]);
+		count++;
+	}
+	//fprintf(out, "%s", "\nFinished writing packet\n");
+	fclose(out);
+	
+	/*int ofile;
+	int wr_size;
+	if ((ofile = open("testWrite.jpg", O_WRONLY|O_CREAT|O_APPEND|O_TRUNC,S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP)) < 0)
+	{
+		perror("Output File Open Error");
+		exit(1);
+	}
+	if ((wr_size = write(ofile, "Writing packet to this file\n", strlen("Writing new packet to this file\n")))<0)
+	{
+		perror("Write Error:");
+		exit(1);
+	}
+	wr_size = 0;
+	if ((wr_size = write(ofile, packet.payload, 256)) < 0)
+	{
+		perror("Write Error:");
+		exit(1);
+	}
+	wr_size = 0;
+	if ((wr_size = write(ofile, "\nFinished writing packet\n", strlen("\nFinished writing packet\n")))<0)
+	{
+		perror("Write Error:");
+		exit(1);
+	}
+	close(ofile);
+	*/
+	/*std::ofstream outfile ("testWrite.jpg",std::ofstream::binary | std::ofstream::app);
 	outfile.write (packet.payload, 256);
+	outfile.write ("\nNEW PACKET\n", sizeof("\nNEW PACKET\n"));
+	outfile.close();*/
 }
 
 frame* stringToFrame(char* buffer){																									//Slightly adapted from code by Juan Rodriguez
