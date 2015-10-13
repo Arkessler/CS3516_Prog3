@@ -38,7 +38,7 @@
 #define MAX_FRAME_PAYLOAD 130
 #define USABLE_BYTES 5
 
-#define NUM_TEST_PACKETS 10
+#define NUM_TEST_PACKETS 15
 using namespace std;
 
 /*-----------------------------------------Functionalities to add---------------------
@@ -838,7 +838,7 @@ short int errorDetectCreate(char* info, int infoLength)																				//Ale
 	int counter = 0;
 	char tempArray1[10];  																											//Honestly, I don't know why these need more than two bytes. But
 	char tempArray2[10];																											//when allocating only two, they kept overwriting the counter
-	char XOR[1];																													//Two bytes
+	char XOR[10];																													//Two bytes
 	char tempChar1;
 	char tempChar2;
 	short int retVal;
