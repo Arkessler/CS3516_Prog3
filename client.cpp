@@ -319,12 +319,12 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			
 				numFramesSent++;
 				logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
-					<<numPacketsSent<<" to physical layer"<<std::endl;					//TO DO: TEST IF THIS AFFECTS TIMEOUT
+					<<numPacketsSent<<" to physical layer"<<std::endl;																//TO DO: TEST IF THIS AFFECTS TIMEOUT
 				
 				counter = 0;
 				int waitRes = waitEvent();
 				if (waitRes == 0)																									//Time out. Need to retransmit
-				{								//MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
+				{																													//To DO: MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
 					if (DEBUG)
 					cout<<"Timed out while waiting for response"<<std::endl;
 					while (waitRes == 0)
@@ -337,13 +337,12 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						numFramesSent++;
 						
 						logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)<<" of Packet "<<numPacketsSent
-						<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
+						<<" to physical layer"<<std::endl;																			//TO DO: TEST IF THIS AFFECTS TIMEOUT
 						
 						waitRes = waitEvent();
 					}	
 					if (waitRes > 0)											
 					{
-						//TEST THIS
 						if (DEBUG)
 							cout<<"Receiving frame"<<std::endl;
 						frame* recvFrame = new frame();
@@ -351,7 +350,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						if (recvFrame->frameType == ACK_FRAME)
 						{
 							if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
-								(recvFrame->seqNumber == recvFrame->ED))
+								(recvFrame->seqNumber == recvFrame->ED))															//If right ack number and not corrupted
 							{
 								logFile<<"Received valid ACK frame for sentFrame "
 									<<sendFrame->seqNumber<<" belonging to Packet "<<numPacketsSent<<std::endl;
@@ -376,9 +375,15 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						}
 						else if (recvFrame->frameType == DATA_FRAME)
 						{
-							//If right ack
-								//Nwl_ack
-								//return nwl_ack
+							/*
+							if (recvFrame->seqNumber == sendFrame->seqNumber)
+							{
+								return recvFrame;
+							}
+							If right ack
+								Nwl_ack
+								return nwl_ack
+							*/
 						}
 						else
 							DieWithError("Received frame is invalid");
@@ -388,11 +393,6 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				}
 				else if (waitRes > 0)																									//Received response before time out. Check if ack
 				{
-					//Quick test
-					if (DEBUG)
-							cout<<"Receiving frame"<<std::endl;
-					
-					//TEST THIS
 					frame* recvFrame = new frame();
 					*recvFrame = dll_recv();
 					if (DEBUG)
@@ -404,7 +404,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 					if (recvFrame->frameType == ACK_FRAME)
 					{
 						if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
-							(recvFrame->seqNumber == recvFrame->ED))
+							(recvFrame->seqNumber == recvFrame->ED))																	//If right ack number and not corrupted
 						{
 							logFile<<"Received valid ACK frame for sentFrame "
 									<<sendFrame->seqNumber<<" belonging to Packet "<<numPacketsSent<<std::endl;
@@ -429,9 +429,15 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 					}
 					else if (recvFrame->frameType == DATA_FRAME)
 					{
-						//If right ack
-							//Nwl_ack
-							//return nwl_ack
+						/*
+							if (recvFrame->seqNumber == sendFrame->seqNumber)
+							{
+								return recvFrame;
+							}
+							If right ack
+								Nwl_ack
+								return nwl_ack
+							*/
 					}
 					else
 						DieWithError("Received frame is invalid");
@@ -467,11 +473,11 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			
 			numFramesSent++;
 			logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
-				<<numPacketsSent<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
+				<<numPacketsSent<<" to physical layer"<<std::endl;																	//TO DO: TEST IF THIS AFFECTS TIMEOUT
 			
 			int waitRes = waitEvent();
 			if (waitRes == 0)																										//In the case of a time out
-			{										//MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
+			{																														//TO DO: MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
 				logFile<<"Timed out waiting for ACK on Frame "<<sendFrame->seqNumber
 							<<" of Packet "<<numPacketsSent<<std::endl;
 				if (DEBUG)
@@ -490,15 +496,14 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				}
 				if (waitRes > 0)																									//If ready to receive a reply																			
 				{
-					//TEST THIS
 					frame* recvFrame = new frame();
 					*recvFrame = dll_recv();
 					if (recvFrame->frameType == ACK_FRAME)
 					{
 						if (recvFrame->frameType == ACK_FRAME)
 						{
-							if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
-								(recvFrame->seqNumber == recvFrame->ED))
+							if ((recvFrame->seqNumber == sendFrame->seqNumber) &&	
+								(recvFrame->seqNumber == recvFrame->ED))															//If right ack number and not corrupted
 							{
 								logFile<<"Received valid ACK frame for sentFrame "
 									<<sendFrame->seqNumber<<" of Packet "<<numPacketsSent<<std::endl;
@@ -523,16 +528,28 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						}
 						else if (recvFrame->frameType == DATA_FRAME)
 						{
-							//If right ack
-								//Nwl_ack
-								//return nwl_ack
+							/*
+							if (recvFrame->seqNumber == sendFrame->seqNumber)
+							{
+								return recvFrame;
+							}
+							If right ack
+								Nwl_ack
+								return nwl_ack
+							*/
 						}
 					}
 					else if (recvFrame->frameType == DATA_FRAME)
 					{
-						//If right ack
-							//Nwl_ack
-							//return nwl_ack
+						/*
+						if (recvFrame->seqNumber == sendFrame->seqNumber)
+						{
+							return recvFrame;
+						}
+						If right ack
+							Nwl_ack
+							return nwl_ack
+						*/
 					}
 					else
 						DieWithError("Received frame is invalid");
@@ -542,15 +559,14 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			}
 			else if (waitRes > 0)
 			{
-				//TEST THIS
 				frame* recvFrame = new frame();
 				*recvFrame = dll_recv();
-				if (recvFrame->frameType == ACK_FRAME)
+				if (recvFrame->frameType == ACK_FRAME)																					//TO DO: Is this necessary?
 				{
 					if (recvFrame->frameType == ACK_FRAME)
 					{
 						if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
-							(recvFrame->seqNumber == recvFrame->ED))
+							(recvFrame->seqNumber == recvFrame->ED))																	//If right ack number and not corrupted
 						{
 							logFile<<"Received valid ACK frame for sentFrame "
 									<<sendFrame->seqNumber<<" of Packet "<<numPacketsSent<<std::endl;
@@ -575,16 +591,28 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 					}
 					else if (recvFrame->frameType == DATA_FRAME)
 					{
-						//If right ack
-							//Nwl_ack
-							//return nwl_ack
+						/*
+						if (recvFrame->seqNumber == sendFrame->seqNumber)
+						{
+							return recvFrame;
+						}
+						If right ack
+							Nwl_ack
+							return nwl_ack
+						*/
 					}
 				}
 				else if (recvFrame->frameType == DATA_FRAME)
 				{
-					//If right ack
-						//Nwl_ack
-						//return nwl_ack
+					/*
+					if (recvFrame->seqNumber == sendFrame->seqNumber)
+					{
+						return recvFrame;
+					}
+					If right ack
+						Nwl_ack
+						return nwl_ack
+					*/
 				}
 				else
 					DieWithError("Received frame is invalid");
