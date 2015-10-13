@@ -82,7 +82,7 @@ void DieWithError(char *errorMessage); /* Error handling function */
 frame* read_frame(char* buffer);
 void build_packet();
 void printFrame (frame fr);
-void get_init_pck(int client_id,int p_num,char* buffer);
+void get_init_pck(int& client_id,int& p_num,char* buffer);
 packet* build_packet(frame* frame_array[]);
 void printPacket(packet pck);
 void build_frame_ack(frame* frame_recieved,char* ack_frame);
@@ -162,7 +162,9 @@ for (;;) /* Run forever */{
                	cout<<"String recieved: :"<<buffer<<std::endl;
 
                	get_init_pck(client_id, p_num, buffer);
-               	p_num = 1;
+
+               	cout<<"Client ID returned: "<<client_id<<"\nNumber of photos: "<<p_num<<std::endl;
+               	//p_num = 1;
                	//While x < number of photos
                	int photo_num = 0;
             do{
@@ -173,24 +175,30 @@ for (;;) /* Run forever */{
                		/*Build file name*/
                		std::string photo_name;
 
-               		std::stringstream tempStr;
+               		std::stringstream clientString;
+               		std::stringstream photoString;
 
-               		tempStr.str(std::string());	
+               		clientString.str(std::string());	
+               		photoString.str(std::string());
 
-               		photo_name = "photonew1123.txt";
-	               	/*
-	               	tempStr<<client_id;																											//Convert cId to string
-					photo_name.append(tempStr.str());
-					tempStr.str(std::string());																								//Reset tempStr
-					tempStr<<photo_num;																											//Convert count to string
-					photo_name.append(tempStr.str());   																						//THIS MAY NEED TO BE CHANGED TO 1 INSTEAD OF COUNT
-					tempStr.str(std::string());																								//Reset tempStr
+               		photo_name = "photonew";
+               		cout<<"Client id to store: "<<client_id<<std::endl;
+	               	clientString<<client_id;
+	               																												//Convert cId to string
+					photo_name.append(clientString.str());
+					//tempStr.str(std::string());
+					photoString.width(SIZE_PNUM);																								//Reset tempStr
+					photoString.fill('0');
+					photoString<<photo_num;																											//Convert count to string
+					photo_name.append(photoString.str());   																						//THIS MAY NEED TO BE CHANGED TO 1 INSTEAD OF COUNT
+					//tempStr.str(std::string());																								//Reset tempStr
 					photo_name.append(".txt");
-					*/
+					
 
 					cout<<"Photo name: "<<photo_name<<std::endl;
 
-					
+					ofstream stream (photo_name.c_str(), std::ofstream::binary|std::ofstream::app);
+
 					int packet_count = 0;
 					int w=0;
 					total_frames_recieved = 0;
@@ -208,8 +216,8 @@ for (;;) /* Run forever */{
 	                	memset(buffer, 0, sizeof(buffer));
 	                	memset(errorDetectString, 0, sizeof(errorDetectString));
 
-	                	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
-	                	        cout<< "Error in recv()";
+	                	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < frame_size)
+	                	        DieWithError("Error in recv()");
 					
 	                	//buffer[bytes_r] = '\0';
 						cout<<"Bytes recieved: "<<bytes_r<<std::endl;
@@ -327,7 +335,7 @@ for (;;) /* Run forever */{
 		        		f++;
 	        		}
 	        		*/
-	        		ofstream stream (photo_name.c_str(), std::ofstream::binary|std::ofstream::app);
+	        		
 	        		
 	        		stream.write(new_packet->payload, new_packet->datalenght);
 
@@ -580,7 +588,7 @@ packet* build_packet(frame* frame_array[]){
 			}
 		frames_processed++;
 
-		if(tempFrame->endPhoto == END_PHOTO){;
+		if(tempFrame->endPhoto == END_PHOTO){
 			new_packet->endPhoto = END_PHOTO;
 		}
 
@@ -596,35 +604,56 @@ packet* build_packet(frame* frame_array[]){
 	return new_packet;
 }
 
-void get_init_pck(int client_id,int p_num,char* buffer){
+void get_init_pck(int& client_id,int& p_num,char* buffer){
 	char tempClID[SIZE_CLIENTID];
-	char tempPNUM[SIZE_PNUM];
+	char tempPNUM[SIZE_PNUM + 1];
+
 	int i, place;
 	int startPNUM = SIZE_CLIENTID;
 
 	i = 0;
 	place = 0;
+
+	cout<<"String recieved: "<<buffer<<std::endl;
 	
 	while(i < place+SIZE_CLIENTID){
-		strncpy(&tempClID[i], &buffer[i], 1);
+		tempClID[i] = buffer[i];
 		i++;
+		if(DEBUG_1){
+		cout<<"value of i in loop: "<<i<<std::endl;
+		}
 	}
-	tempClID[SIZE_CLIENTID] = '\0';
+	if(DEBUG_1){
+		cout<<"value of i: "<<i<<std::endl;
+	}
+
+	//tempClID[SIZE_CLIENTID] = '\0';
+
+	if(DEBUG_1){
+		cout<<"value of i: "<<i<<std::endl;
+	}
+
+	client_id = atoi(tempClID);
 
 	place = i;
+
+	if(DEBUG_1){
+		cout<<"value of i: "<<i<<std::endl;
+	}
 
 	while(i < place + SIZE_PNUM){
 		strncpy(&tempPNUM[i-startPNUM], &buffer[i], 1);
 		i++;
 	}
 
+	tempPNUM[SIZE_PNUM] = '\0';
 	if(DEBUG_1){
 		cout<<"Temp num string: "<<tempPNUM<<std::endl;
 	}
 
-	tempPNUM[SIZE_PNUM] = '\0';
+	
 
-	client_id = atoi(tempClID);
+	//client_id = atoi(tempClID);
 	p_num = atoi(tempPNUM);
 
 	cout<<"Client ID: "<<client_id<<"\n";
@@ -780,13 +809,7 @@ void check_error(char* buffer, char* error_detect_char)
 	int startERRD = startPayload + PAYLOAD_SIZE;
 	//char error_detect_char[startERRD];
 
-	//int startENDP = startERRD + SIZE_ENDPHOTO;
 	char seq_num[SEQ_NUM_SIZE + 1];
-	int ED_temp;
-	char frameType;
-	char usable_b[USABLE_BYTES + 1];
-	char EOP;
-	char ED[ERRD_SIZE + 1];
 	char payload[130];
 		
 	memset(seq_num, 0, strlen(seq_num));
