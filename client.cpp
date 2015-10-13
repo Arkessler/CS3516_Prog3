@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <sys/stat.h> 
 #include <fcntl.h>
+#include <sys/time.h>
 
 #define DEFAULT_PORT 1199
 #define CHUNK_SIZE 256
@@ -83,6 +84,8 @@ std::ofstream logFile;
 std::string logLoc;
 int numPacketsSent = 0;																												//Starting value is 0 becauase logging happens after incrementation
 int numFramesSent = 1;																												//Starting value is 1 so incrementing can happen after logging
+struct timeval startTime;
+struct timeval endTime;
 //Misc global var(s)
 fd_set readset;
 
@@ -167,6 +170,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	if (DEBUG)
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 
+	int getTimeRes = gettimeofday(&startTime, NULL);
 	for (count = 0; count<numPhoto; count++)
 	{																																//Set new readLoc
 		readLoc = "photo";
@@ -181,6 +185,9 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 			cout<< "New read location: "<<readLoc<<std::endl;
 		nwl_read(readLoc);																											//Have network layer read file
 	}
+	getTimeRes = gettimeofday(&endTime, NULL);
+	
+	//Calculate total time
 	
 	phl_close();																													//Close socket after reading last photo
 }
@@ -1039,37 +1046,7 @@ void testWritePacket(packet packet)																									//Alexi Kessler
 	}
 	//fprintf(out, "%s", "\nFinished writing packet\n");
 	fclose(out);
-	
-	/*int ofile;
-	int wr_size;
-	if ((ofile = open("testWrite.jpg", O_WRONLY|O_CREAT|O_APPEND|O_TRUNC,S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP)) < 0)
-	{
-		perror("Output File Open Error");
-		exit(1);
-	}
-	if ((wr_size = write(ofile, "Writing packet to this file\n", strlen("Writing new packet to this file\n")))<0)
-	{
-		perror("Write Error:");
-		exit(1);
-	}
-	wr_size = 0;
-	if ((wr_size = write(ofile, packet.payload, 256)) < 0)
-	{
-		perror("Write Error:");
-		exit(1);
-	}
-	wr_size = 0;
-	if ((wr_size = write(ofile, "\nFinished writing packet\n", strlen("\nFinished writing packet\n")))<0)
-	{
-		perror("Write Error:");
-		exit(1);
-	}
-	close(ofile);
-	*/
-	/*std::ofstream outfile ("testWrite.jpg",std::ofstream::binary | std::ofstream::app);
-	outfile.write (packet.payload, 256);
-	outfile.write ("\nNEW PACKET\n", sizeof("\nNEW PACKET\n"));
-	outfile.close();*/
+
 }
 
 frame* stringToFrame(char* buffer){																									//Slightly adapted from code by Juan Rodriguez
