@@ -28,7 +28,7 @@
 #define END_PHOTO 'Y'
 #define CONT_PHOTO 'N'
 #define MAX_WAIT_TIME 750
-#define SIZE_RECEIVING_BUFFER 400         																							//TODO: Change this to a more appropriate number
+#define SIZE_RECEIVING_BUFFER 150         																							//TODO: Change this to a more appropriate number
 																																	//Sizes for frame parsing
 #define FRAME_TYPE_SIZE 1
 #define SEQ_NUM_SIZE 5
@@ -38,6 +38,7 @@
 #define MAX_FRAME_PAYLOAD 130
 #define USABLE_BYTES 5
 
+#define NUM_TEST_PACKETS 10
 using namespace std;
 
 /*-----------------------------------------Functionalities to add---------------------
@@ -50,6 +51,7 @@ Logging of all events
 Running tally of significant events
 Introduce frame transmission error
 */
+
 class packet																														//Alexi Kessler
 {
 	public:
@@ -74,12 +76,12 @@ class frame																															//Alexi Kessler
 bool DEBUG = true;
 //Send global var(s)
 int sockfd = 0;
-short int sequenceNumber = 0;
+short int sequenceNumber = 1;
 char recvBuf[SIZE_RECEIVING_BUFFER];
 //Logging variables
 std::ofstream logFile;
 std::string logLoc;
-int numPacketsSent = 1;																												//Starting value is 1 so incrementing can happen after logging
+int numPacketsSent = 0;																												//Starting value is 0 becauase logging happens after incrementation
 int numFramesSent = 1;																												//Starting value is 1 so incrementing can happen after logging
 //Misc global var(s)
 fd_set readset;
@@ -98,7 +100,6 @@ void phl_close();
 void startTimer(int fileDescriptor);
 void stopTimer ();
 //Misc functions
-frame bufToFrame(char * buf);
 void DieWithError(char *errorMessage);
 short int errorDetectCreate(char* frameInfo, int infoLength);
 void testSendMessage();
@@ -212,14 +213,11 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			testWritePacket(*sendPacket);																
 			frame recvFrame = dll_send(*sendPacket);																				//Send packet to dll and get result
 			
-			logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
-			numPacketsSent++;
-			
 			//Wait on nwl_ACK (Process recvFrame)
 			if (DEBUG)																												//Temporary limiter for testing purposes
 			{
 				counter++;
-				if (counter > 2)
+				if (counter > NUM_TEST_PACKETS)
 					DieWithError("Done test");
 			}
 		} 
@@ -240,9 +238,6 @@ void nwl_read(std::string fileName)																									//Alexi Kessler
 			}
 			frame recvFrame = dll_send(*sendPacket);
 			
-			logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
-			numPacketsSent++;
-			
 			//Wait on nwl_ACK (Process recvFrame)
 			if (DEBUG)
 			{
@@ -260,12 +255,12 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	bool endPhoto;																													//Values for converting packet to frame																							
 	char givenArray[CHUNK_SIZE];
 	char framePayload[MAX_FRAME_PAYLOAD];
-	int startFrameNumber = numFramesSent;
+	int startFrameNumber = numFramesSent-1;
 	unsigned short int lengthPacket = pkt.dataLength;
 	bool retransmit = false;
 	
-	logFile<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;														//Initial logging. Placed here to ensure success of 
-	numPacketsSent++;																												//packet send.
+	numPacketsSent++;	
+	logFile<<"\nSent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;														//Initial logging. Placed here to ensure success of packet send.
 	
 	if (pkt.endPhoto == END_PACKET)
 		endPhoto = true;
@@ -311,9 +306,9 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			else
 				sendFrame->endPhoto = CONT_PHOTO;
 			
-			do
+			do																														//While retransmit
 			{
-				phl_send(*sendFrame);																									//Send final frame
+				phl_send(*sendFrame);																								//Send final frame
 			
 				numFramesSent++;
 				logFile<<"Sent Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "
@@ -321,24 +316,65 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				
 				counter = 0;
 				int waitRes = waitEvent();
-				if (waitRes == 0)																										//Time out. Need to retransmit
+				if (waitRes == 0)																									//Time out. Need to retransmit
 				{								//MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
 					if (DEBUG)
 					cout<<"Timed out while waiting for response"<<std::endl;
 					while (waitRes == 0)
 					{
+						logFile<<"Timed out waiting for ACK on Frame "<<sendFrame->seqNumber
+							<<" of Packet "<<numPacketsSent<<std::endl;
 						if (DEBUG)
 							cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
 						phl_send(*sendFrame);
+						numFramesSent++;
 						
-						logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
+						logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)<<" of Packet "<<numPacketsSent
 						<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
 						
 						waitRes = waitEvent();
-					}
-					if (waitRes > 0)
+					}	
+					if (waitRes > 0)											
 					{
-						//TO DO: Add full handling of reply
+						//TEST THIS
+						if (DEBUG)
+							cout<<"Receiving frame"<<std::endl;
+						frame* recvFrame = new frame();
+						*recvFrame = dll_recv();
+						if (recvFrame->frameType == ACK_FRAME)
+						{
+							if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
+								(recvFrame->seqNumber == recvFrame->ED))
+							{
+								logFile<<"Received valid ACK frame for sentFrame "
+									<<sendFrame->seqNumber<<" belonging to Packet "<<numPacketsSent<<std::endl;
+								if (DEBUG)
+									cout<<"Received valid ACK reply"<<std::endl;
+								retransmit = false;
+							}
+							else
+							{
+								logFile<<"Received bad ACK frame"<<std::endl;
+								if (!(recvFrame->seqNumber == sendFrame->seqNumber))
+								{
+									logFile<<"ACK Sequence Number: "<<recvFrame->seqNumber
+										<<" Sent Frame Sequence Number: "<<sendFrame->seqNumber<<std::endl;
+								}
+								else if (!(recvFrame->seqNumber != recvFrame->ED))
+								{
+									logFile<<"ACK ED: "<<recvFrame->ED<<" ACK seqNumber: "<<recvFrame->seqNumber<<std::endl;
+								}
+								retransmit = true;
+							} 
+						}
+						else if (recvFrame->frameType == DATA_FRAME)
+						{
+							//If right ack
+								//Nwl_ack
+								//return nwl_ack
+						}
+						else
+							DieWithError("Received frame is invalid");
 						if (DEBUG)
 							cout<<"Retransmitted sucessfully, received reply"<<std::endl;
 					}
@@ -346,22 +382,41 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				else if (waitRes > 0)																									//Received response before time out. Check if ack
 				{
 					//Quick test
-					phl_recv(); 
+					if (DEBUG)
+							cout<<"Receiving frame"<<std::endl;
 					
 					//TEST THIS
 					frame* recvFrame = new frame();
 					*recvFrame = dll_recv();
+					if (DEBUG)
+					{
+						cout<<"Frame seq: "<<recvFrame->seqNumber;
+						cout<<"sendFrame seq: "<<sendFrame->seqNumber;
+						cout<<"Frame ED: "<<recvFrame->ED;
+					}
 					if (recvFrame->frameType == ACK_FRAME)
 					{
 						if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
 							(recvFrame->seqNumber == recvFrame->ED))
 						{
+							logFile<<"Received valid ACK frame for sentFrame "
+									<<sendFrame->seqNumber<<" belonging to Packet "<<numPacketsSent<<std::endl;
 							if (DEBUG)
 								cout<<"Received valid ACK reply"<<std::endl;
 							retransmit = false;
 						}
 						else
 						{
+							logFile<<"Received bad ACK frame"<<std::endl;
+							if (!(recvFrame->seqNumber == sendFrame->seqNumber))
+							{
+								logFile<<"ACK Sequence Number: "<<recvFrame->seqNumber
+									<<" Sent Frame Sequence Number: "<<sendFrame->seqNumber<<std::endl;
+							}
+							else if (!(recvFrame->seqNumber == recvFrame->ED))
+							{
+								logFile<<"ACK ED: "<<recvFrame->ED<<" ACK seqNumber: "<<recvFrame->seqNumber<<std::endl;
+							}
 							retransmit = true;
 						} 
 					}
@@ -378,7 +433,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 		} 																//end frame construction
 		i++;
 	}
-	//---------------------------------------------------End looping through packet-----------------------------------------------------
+	//----------------------------------------------------------------------------End looping through packet-----------------------------------------------------------------------------------
 	if (counter!= 0)																												//Finished parsing packet, some data leftover. Put in frame
 	{
 		frame* sendFrame = new frame;
@@ -399,7 +454,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 			sendFrame->endPhoto = END_PHOTO;
 		else
 			sendFrame->endPhoto = CONT_PHOTO;
-		do
+		do																															//While retransmit
 		{
 			phl_send(*sendFrame);
 			
@@ -408,8 +463,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				<<numPacketsSent<<" to physical layer"<<std::endl;						//TO DO: TEST IF THIS AFFECTS TIMEOUT
 			
 			int waitRes = waitEvent();
-			if (waitRes == 0)																											//Time out
+			if (waitRes == 0)																										//In the case of a time out
 			{										//MAY WANT TO MAKE THIS SIMPLY CHANGE RETRANSMIT
+				logFile<<"Timed out waiting for ACK on Frame "<<sendFrame->seqNumber
+							<<" of Packet "<<numPacketsSent<<std::endl;
 				if (DEBUG)
 					cout<<"Timed out while waiting for response"<<std::endl;
 				while (waitRes == 0)
@@ -418,23 +475,66 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						cout<<"Retransmitting frame: "<<sendFrame->seqNumber<<std::endl;
 					phl_send(*sendFrame);
 					
+					numFramesSent++;
 					logFile<<"Retransmitted Frame "<<(sendFrame->seqNumber)-startFrameNumber<<" of Packet "<<numPacketsSent
-						<<" to physical layer"<<std::endl;								//TO DO: TEST IF THIS AFFECTS TIMEOUT
+						<<" to physical layer"<<std::endl;																			//TO DO: TEST IF THIS AFFECTS TIMEOUT
 						
 					waitRes = waitEvent();
 				}
-				if (waitRes > 0)
+				if (waitRes > 0)																									//If ready to receive a reply																			
 				{
-					//TO DO: Add full handling of reply
+					//TEST THIS
+					frame* recvFrame = new frame();
+					*recvFrame = dll_recv();
+					if (recvFrame->frameType == ACK_FRAME)
+					{
+						if (recvFrame->frameType == ACK_FRAME)
+						{
+							if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
+								(recvFrame->seqNumber == recvFrame->ED))
+							{
+								logFile<<"Received valid ACK frame for sentFrame "
+									<<sendFrame->seqNumber<<" of Packet "<<numPacketsSent<<std::endl;
+								if (DEBUG)
+									cout<<"Received valid ACK reply"<<std::endl;
+								retransmit = false;
+							}
+							else
+							{
+								logFile<<"Received bad ACK frame"<<std::endl;
+								if (!(recvFrame->seqNumber == sendFrame->seqNumber))
+								{
+									logFile<<"ACK Sequence Number: "<<recvFrame->seqNumber
+										<<" Sent Frame Sequence Number: "<<sendFrame->seqNumber<<std::endl;
+								}
+								else if (!(recvFrame->seqNumber == recvFrame->ED))
+								{
+									logFile<<"ACK ED: "<<recvFrame->ED<<" ACK seqNumber: "<<recvFrame->seqNumber<<std::endl;
+								}
+								retransmit = true;
+							} 
+						}
+						else if (recvFrame->frameType == DATA_FRAME)
+						{
+							//If right ack
+								//Nwl_ack
+								//return nwl_ack
+						}
+					}
+					else if (recvFrame->frameType == DATA_FRAME)
+					{
+						//If right ack
+							//Nwl_ack
+							//return nwl_ack
+					}
+					else
+						DieWithError("Received frame is invalid");
 					if (DEBUG)
 						cout<<"Retransmitted sucessfully, received reply"<<std::endl;
 				}
 			}
 			else if (waitRes > 0)
 			{
-				//Quick test
-				phl_recv();
-				
 				//TEST THIS
 				frame* recvFrame = new frame();
 				*recvFrame = dll_recv();
@@ -445,12 +545,24 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						if ((recvFrame->seqNumber == sendFrame->seqNumber) &&
 							(recvFrame->seqNumber == recvFrame->ED))
 						{
+							logFile<<"Received valid ACK frame for sentFrame "
+									<<sendFrame->seqNumber<<" of Packet "<<numPacketsSent<<std::endl;
 							if (DEBUG)
 								cout<<"Received valid ACK reply"<<std::endl;
 							retransmit = false;
 						}
 						else
 						{
+							logFile<<"Received bad ACK frame"<<std::endl;
+							if (!(recvFrame->seqNumber == sendFrame->seqNumber))
+							{
+								logFile<<"ACK Sequence Number: "<<recvFrame->seqNumber
+									<<" Sent Frame Sequence Number: "<<sendFrame->seqNumber<<std::endl;
+							}
+							else if (!(recvFrame->seqNumber == recvFrame->ED))
+							{
+								logFile<<"ACK ED: "<<recvFrame->ED<<" ACK seqNumber: "<<recvFrame->seqNumber<<std::endl;
+							}
 							retransmit = true;
 						} 
 					}
@@ -482,8 +594,6 @@ frame dll_recv()            																										//Alexi Kessler
 	frame* returnFrame = new frame();
 	char* phlChar;
 	phlChar = phl_recv();
-	if (DEBUG)
-		cout<<"Received: "<<phlChar<<std::endl;
 	returnFrame = stringToFrame(phlChar);																							//TO DO: Test this
 	return *returnFrame;
 }
@@ -542,11 +652,6 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 
 void phl_send(frame fr)																												//Alexi Kessler
 {
-	/*
-	if (DEBUG)
-		cout<<"Physical layer received frame:"<<std::endl;
-	printFrame(fr);
-	*/
 	char tempBuf[10];
 	char lengthBuf[10];
 	char sendChar[MAX_FRAME_SIZE+40];																								//Char* string to be sent with send()
@@ -617,6 +722,7 @@ void phl_send(frame fr)																												//Alexi Kessler
 		sprintf(tempBuf, "0%hi", fr.ED);
 	else 
 		DieWithError("Error converting ED to string");
+	
 	i = 0;
 	while (i<6)						//Add error detect value to sendChar
 	{
@@ -628,6 +734,17 @@ void phl_send(frame fr)																												//Alexi Kessler
 	sendChar[length] = fr.endPhoto;
 	length++;
 	
+	//---------------------------------------FLIP A BIT-------------------------------------------------------
+	if (numFramesSent%6 == 0)
+	{
+		int flipLoc = (rand()%6)+142;
+		logFile<<"Introduced a bit error while sending"<<std::endl;
+		if (DEBUG)
+			cout<<"flipping bit in place: "<<flipLoc<<std::endl;
+		sendChar[flipLoc] += 1;
+	}
+	//------------------------------------------------------------------------------------------------------------------
+	
 	i = 0;
 	while (i<length)
 	{
@@ -638,10 +755,6 @@ void phl_send(frame fr)																												//Alexi Kessler
 		i++;
 	}
 	cout<<"fr.endPhoto: "<<fr.endPhoto<<std::endl;
-	
-	frame* testFrame = new frame();
-	testFrame = stringToFrame(sendChar);
-	printFrame(*testFrame);
 	
 	int sendRes = 0;
 	sendRes = send(sockfd, (void*)sendChar, length, 0);
@@ -664,16 +777,19 @@ char* phl_recv()																													//Alexi Kessler
 	
 	bytesReceived = recv(sockfd, recvBuf, SIZE_RECEIVING_BUFFER-1, 0);
 	if (bytesReceived <= 0)
+	{
+		cout<<"Recv returned "<<bytesReceived<<std::endl;
 		DieWithError("Issue with phl_recv");
+	}
 	if (DEBUG)
 	{
+		cout<<"Received "<<bytesReceived<<" bytes"<<std::endl;
 		while (z < bytesReceived)
 		{
 			cout<<"Received["<<z<<"]: "<<recvBuf[z]<<" ascii value: "<<(int)recvBuf[z]<<std::endl;
 			z++;
 		}
 	}
-	
 	return recvBuf;	
 }
 	
@@ -730,12 +846,6 @@ short int errorDetectCreate(char* info, int infoLength)																				//Ale
 	{
 		if (counter == 0)
 		{
-			/*cout<<"Before first copy, frameInfo[0]: "<<frameInfo[0]<<" frameInfo[1]: "<<frameInfo[1]<<std::endl;
-			cout<<"tempArray1[0]: "<<tempArray1[0]<<" tempArray1[1]: "<<tempArray1[1]<<std::endl;
-			cout<<"counter: "<<counter<<std::endl;
-			cout<<"tempArray1 address"<<&tempArray1<<std::endl;
-			cout<<"frameInfo address"<<&frameInfo<<std::endl;
-			cout<<"counter address"<<&counter<<std::endl;*/
 			strncpy(tempArray1, &frameInfo[0], 2);
 			strncpy(tempArray2, &frameInfo[counter + 2], 2);
 			tempChar1 = (char)(tempArray1[0]^tempArray2[0]);
@@ -921,6 +1031,8 @@ void testWritePacket(packet packet)																									//Alexi Kessler
 }
 
 frame* stringToFrame(char* buffer){																									//Slightly adapted from code by Juan Rodriguez
+	cout<<"Recevied string: "<<buffer<<std::endl;
+	
 	frame* new_frame = new frame();
 	
 	int i = 0;
@@ -931,10 +1043,8 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 	int startPayload = startUsableBytes + USABLE_BYTES;
 	int startERRD = startPayload + PAYLOAD_SIZE;
 	char seq_num[SEQ_NUM_SIZE + 1];
-	//char frameType;
 	char usable_b[USABLE_BYTES + 1];
 	char ED[ERRD_SIZE + 1];
-	//char payload[130];
 		
 	memset(seq_num, 0, strlen(seq_num));
 	
@@ -1003,6 +1113,8 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 
 	new_frame->endPhoto = buffer[i];
 	
+	ED[ERRD_SIZE] = '\0';
+	
 	int parse = 0;
 	int ignore = 0;
 	while(parse < ERRD_SIZE)
@@ -1012,6 +1124,10 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 			ignore++;
 		}
 		else if(ED[parse] == '-')
+		{
+			break;
+		}
+		else
 		{
 			break;
 		}
@@ -1029,6 +1145,7 @@ frame* stringToFrame(char* buffer){																									//Slightly adapted f
 	new_frame->dataLength = bytes_rcvd;
 	new_frame->ED = atoi(&ED[ignore]);
 	
+	printFrame(*new_frame);
 	return new_frame;	
 }
 
