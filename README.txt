@@ -24,3 +24,6 @@ Client specific
 
 Server specific
 -Server usage
+-No ACK Corruption
+	-When frame that receives bad ACK is last frame in packet, issue is that server sends nwl_ACK, which the client, while trying
+	to retransmit the previous frame, receives as a premature packet ACK, and breaks.

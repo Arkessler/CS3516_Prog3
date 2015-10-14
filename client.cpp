@@ -379,7 +379,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 							} 
 						}
 						else
+						{
+							printFrame(*recvFrame);
 							DieWithError("Received frame is invalid");
+						}
 						if (DEBUG)
 							cout<<"Retransmitted sucessfully, received reply"<<std::endl;
 					}
@@ -423,7 +426,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						} 
 					}
 					else
+					{
+						printFrame(*recvFrame);
 						DieWithError("Received frame is invalid");
+					}
 				}																													//end ACK receive 
 			} while (retransmit);																									//end frame transmission
 		} 																															//end frame construction
@@ -515,7 +521,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						}
 					}
 					else
+					{
+						printFrame(*recvFrame);
 						DieWithError("Received frame is invalid");
+					}
 					if (DEBUG)
 						cout<<"Retransmitted sucessfully, received reply"<<std::endl;
 				}
@@ -556,7 +565,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 					}
 				}
 				else
+				{
+					printFrame(*recvFrame);
 					DieWithError("Received frame is invalid");
+				}
 			}																														//end ACK receive 									
 		} while (retransmit);																										//end frame transmission
 	}																																//end frame construction
