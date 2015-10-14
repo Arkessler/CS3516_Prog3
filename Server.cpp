@@ -18,6 +18,7 @@ Author: Most of the code was taken from "TCP/IP Sockets in C Practical Guide for
 #include <netinet/tcp.h>
 #include <sstream>
 #include <istream>
+#include <time.h> 
 
 using namespace std;
 
@@ -56,9 +57,13 @@ using namespace std;
 #define DEBUG_0 0
 #define DEBUG_1 0
 #define DEBUG_2 0
-#define DEBUG_6 0
+#define DEBUG_3 0
+#define DEBUG_4 0
+#define DEBUG_5 0
 #define DEBUG_SPECIAL 1
 #define ACK_CORRUPTION 0
+
+
 class packet
 {
 	public:
@@ -98,7 +103,11 @@ std::ofstream logFile;
 std::string logLoc;
 int packet_count;
 int total_frames_recieved;
- 
+int total_good_frames;
+int endPicflag;
+int photo_num;
+char message_display[] = "*****************************************************";				
+time_t startCopy, endCopy;
 
 int main(int argc, char *argv[]){ 
  int bytes_r;
@@ -112,16 +121,13 @@ int main(int argc, char *argv[]){
  unsigned short ServPort; 			/* Server port */
  unsigned int clntLen;
  frame* frameArray[10];
- char* test_string = "Hello Master";
  ofstream stream;
  int client_id, p_num;
  int frame_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO;
  int errorDetectString_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD;
  char errorDetectString[errorDetectString_size];
- packet* new_packet = new packet();
  int frame_is_bad;
- //int frame_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO;
- char tempString[frame_size];
+ char tempString[frame_size];											
 
 
 ServPort = SERVPORT;			
@@ -156,171 +162,150 @@ for (;;) /* Run forever */{
 
  if ((clntSock = accept (servSock, (struct sockaddr *) &ClntAddr, &clntLen)) < 0)
 	DieWithError("accept() failed");
-	// printf("Accept\n"); 
 
  	printf("Handling client %s\n", inet_ntoa(ClntAddr.sin_addr));
 
  	initial_print();
- 	
 
 	if((pid = fork()) < 0){
-                printf("Error in fork()");
+        printf("Error in fork()");
+    }
+
+    if (pid == 0) { // this is the child process
+        		
+        close(servSock);
+
+        if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0){
+            cout<< "Error recieving initial packet\n";
+            cout<<"String recieved: :"<<buffer<<std::endl;
         }
 
-        if (pid == 0) { // this is the child process
-        		
-                close(servSock);
+        time(&startCopy);								//Record time when copying begins 
 
-                if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < 0)
-                	        cout<< "Error recieving initial packet\n";
+       	get_init_pck(client_id, p_num, buffer);
 
-               	cout<<"String recieved: :"<<buffer<<std::endl;
+       	cout<<"Client ID returned: "<<client_id<<"\nNumber of photos: "<<p_num<<std::endl;
+       	
+       	std::stringstream clientString;
+       	std::stringstream fileType;
 
-               	get_init_pck(client_id, p_num, buffer);
+       	clientString.str(std::string());
+       	clientString<<client_id;
 
-               	cout<<"Client ID returned: "<<client_id<<"\nNumber of photos: "<<p_num<<std::endl;
-               	
-               	std::stringstream clientString;
-               	std::stringstream fileType;
+       	fileType.str(std::string());
+       	fileType<<".log";
 
-               	clientString.str(std::string());
-               	clientString<<client_id;
+       	logLoc = "Server_";
 
-               	fileType.str(std::string());
-               	fileType<<".log";
+		logLoc.append(clientString.str());
+		logLoc.append(fileType.str());
+		fileType.str(std::string());
 
-               	logLoc = "Server_";
-				//clientString<<".log";
-				logLoc.append(clientString.str());
-				logLoc.append(fileType.str());
-				fileType.str(std::string());
+		cout<<"Log location: "<<logLoc.c_str()<<std::endl;
 
-				cout<<"Log location: "<<logLoc.c_str()<<std::endl;
+		logFile.open(logLoc.c_str());
+		logFile<<"\nConnected to client "<<client_id<<std::endl;
 
-				logFile.open(logLoc.c_str());
-				logFile<<"\nConnected to client "<<client_id<<std::endl;
+        do{
+        	/* Nwl recieve*/
 
-              	//p_num = 1;
-               	//While x < number of photos
-               	int photo_num = 0;
-            do{
-               	
-            	photo_num++;
-               	//do while x < not end of photo
-					
-               		/*Build file name*/
-               		std::string photo_name;
-
-               		
-               		std::stringstream photoString;
-
-               			
-               		photoString.str(std::string());
-
-               		photo_name = "photonew";
-               		//cout<<"Client id to store: "<<client_id<<std::endl;
-	               	
-	               																												//Convert cId to string
-					photo_name.append(clientString.str());
-					//tempStr.str(std::string());
-					photoString.width(SIZE_PNUM);																								//Reset tempStr
-					photoString.fill('0');
-					photoString<<photo_num;																											//Convert count to string
-					photo_name.append(photoString.str());   																						//THIS MAY NEED TO BE CHANGED TO 1 INSTEAD OF COUNT
-					//tempStr.str(std::string());
-					fileType<<".txt";
-
-					photo_name.append(fileType.str());
-					
-					
-					logFile<<"Attempting to recieve photo number "<<photo_num<<" on file "<<photo_name<<std::endl;
-					
-					FILE * zeroOut = fopen(photo_name.c_str(),"w");
-					fprintf(zeroOut, "");
-					fclose(zeroOut);
-					
-					cout<<"Photo name: "<<photo_name<<std::endl;
-
-					
-
-					packet_count = 0;
-					//int w=0;
-					total_frames_recieved = 0;
-               	do{               
-               		packet_count++;
-               		frames_count = 0;
-
-               		frame* inc_frame = new frame();
-               		//Recieve frames to form packet
-
-               		cout<<"\n\nRecieving packet "<<packet_count<<"...\n\n";
-
-
-	                do{
-	                	//frame_is_bad = 0;
-
-	                	memset(buffer, 0, sizeof(buffer));
-	                	memset(errorDetectString, 0, sizeof(errorDetectString));
-
-	                	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < frame_size){
-	                	    DieWithError("Error in recv()");
-	                	}
-					
-						cout<<"Bytes recieved: "<<bytes_r<<std::endl;
-
-	                	if(DEBUG){               
-	                		int x = 0;
-
-	                		while(x < BUFFSIZE){
-	                		cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
-	                		x++;
-	                		}
-	                	}
-
-						inc_frame = read_frame(buffer);
-						total_frames_recieved++;
-
-						check_error(buffer, errorDetectString);
-
-						short int frame_read_error = errorDetectCreate(errorDetectString, errorDetectString_size);
-						
-						cout<<"From frame: "<<inc_frame->seqNumber<<"\nError generated: "<<frame_read_error<<"\nED from frame: "<<inc_frame->ED<<std::endl;
-						
-						if(frame_read_error == inc_frame->ED){
-							frame_is_bad = 0;
-							//cout<<"\n\n\nAt least error detection is working now\n\n\n";
-							
-							logFile<<"\nFrame "<< inc_frame->seqNumber<<" recieved correctly."<<std::endl;
-
-						//int frame_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO;
-						//char tempString[frame_size];
+        	photo_num++;
 				
+           	/*Build file name*/
+           	std::string photo_name;
+           	std::stringstream photoString;
 
-							build_frame_ack(inc_frame, tempString);
+           	photoString.str(std::string());
 
-							//cout<<"Frame ack to be sent: "<<tempString<<std::endl;
+       		photo_name = "photonew";
+           																													//Convert cId to string
+			photo_name.append(clientString.str());
+			//tempStr.str(std::string());
+			photoString.width(SIZE_PNUM);																								//Reset tempStr
+			photoString.fill('0');
+			photoString<<photo_num;																											//Convert count to string
+			photo_name.append(photoString.str());   																						//THIS MAY NEED TO BE CHANGED TO 1 INSTEAD OF COUNT
+			//tempStr.str(std::string());
+			fileType<<".jpg";
 
-							int sendRes = send(clntSock, tempString, strlen(tempString), 0);
-							if (sendRes < 0){
-								DieWithError("Send failed");
-							}
+			photo_name.append(fileType.str());
 
-							
+			fileType.str(std::string());			//Clear string for next picture
+			
+			logFile<<"Attempting to recieve photo number "<<photo_num<<" on file "<<photo_name<<std::endl;
+			
+			FILE * zeroOut = fopen(photo_name.c_str(),"w");
+			fprintf(zeroOut, "");
+			fclose(zeroOut);
+			
+			cout<<"Photo name: "<<photo_name<<std::endl;
 
-							else 
-							{
-								if (DEBUG)
-									cout<<"Bytes sent: "<<sendRes<<std::endl;
-							}
+			packet_count = 0;
+			total_frames_recieved = 0;
+			total_good_frames = 0;
 
-							logFile<<"Acknolegment for frame "<< inc_frame->seqNumber<<" sent."<<std::endl;
-							cout<<"\nBytes sent in ack frame: "<<sendRes<<std::endl;
+           	do{               
+           		packet_count++;
+           		frames_count = 0;
 
-							
+           		frame* inc_frame = new frame();
+           		cout<<"\n\nRecieving packet "<<packet_count<<"\n";
 
+                do{	
+           		/*Phl recieve*/
+
+                	memset(buffer, 0, sizeof(buffer));
+                	memset(errorDetectString, 0, sizeof(errorDetectString));
+
+                	if((bytes_r = recv(clntSock, buffer, BUFFSIZE - 1, 0)) < frame_size){
+                	    DieWithError("Error in recv()");
+                	}
+				
+					cout<<"Bytes recieved: "<<bytes_r<<std::endl;
+
+                	if(DEBUG){               
+                		int x = 0;
+
+                		while(x < BUFFSIZE){
+                		cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
+                		x++;
+                		}
+                	}
+
+					inc_frame = read_frame(buffer);
+					total_frames_recieved++;
+
+					check_error(buffer, errorDetectString);
+
+					short int frame_read_error = errorDetectCreate(errorDetectString, errorDetectString_size);
+					
+					cout<<"From frame: "<<inc_frame->seqNumber<<"\nError generated: "<<frame_read_error<<"\nED from frame: "<<inc_frame->ED<<std::endl;
+					
+					/*Phl send*/
+					if(frame_read_error == inc_frame->ED){
+						frame_is_bad = 0;
+						logFile<<"\nFrame "<< inc_frame->seqNumber<<" recieved correctly."<<std::endl;
+
+						build_frame_ack(inc_frame, tempString);
+
+						int sendRes = send(clntSock, tempString, strlen(tempString), 0);
+						if (sendRes < 0){
+							DieWithError("Send failed");
+						}
+
+						else 
+						{
+							if (DEBUG)
+								cout<<"Bytes sent: "<<sendRes<<std::endl;
+						}
+
+						logFile<<"Acknolegment for frame "<< inc_frame->seqNumber<<" sent."<<std::endl;
+						cout<<"\nBytes sent in ack frame: "<<sendRes<<std::endl;
+						
 						frameArray[frames_count] = inc_frame;					//Store the frames to later build up 
 						frames_count++;
 					}
+					/*End of Phl send*/
 
 					else{
 						cout<<"\nRecieved a bad frame...\nTotal frames recieved: "<<total_frames_recieved<<"\n";
@@ -341,73 +326,85 @@ for (;;) /* Run forever */{
 
 	                		cout<<"Return value from error detect: "<<frame_read_error<<std::endl;
 	                		}
-	                	}
+                		}
 					}
-						//cout<<"Frame:\n"<<inc_frame->payload<<std::endl;
-						if(DEBUG){
-							cout<<"\nFrames_count value after increment: "<<frames_count<<std::endl;
-						}
 
-
-						//w++;
-	        		} while(inc_frame->EOP != END_PACKET || frame_is_bad);
-
-	        		packet* new_packet = new packet();
-
-	        		cout<<"\nBuilding packet...\n";
-	        		new_packet = build_packet(frameArray);
-	        		logFile<<"\nBuilt packet "<<packet_count<<std::endl;
-
-	        		memset(tempString, 0, sizeof(tempString));
-
-	        		build_packet_ack(new_packet, tempString);
-	        		
-	        		int sendRes = send(clntSock, tempString, strlen(tempString), 0);
-						if (sendRes < 0){
-							DieWithError("Send to network layer failed");
-						}
-
-					logFile<<"Sent newlork layer ack for packet\n";
-					cout<<"\nWriting to file...\n";
-	        		
-					FILE * out = fopen(photo_name.c_str(), "a");
-					int count = 0;
-					while (count < new_packet->datalenght)
-					{
-						fprintf(out, "%c", new_packet->payload[count]);
-						count++;
+					if(DEBUG){
+						cout<<"\nFrames_count value after increment: "<<frames_count<<std::endl;
 					}
-					
-					cout<<"Bytes written: "<<count<<std::endl;
-					
-					fclose(out);  
 
-	        		cout<<"\nEnd of photo: "<<new_packet->endPhoto<<std::endl;
+				/*End of phl recv*/
 
+        		}while(inc_frame->EOP != END_PACKET || frame_is_bad);
 
-	        	}while((new_packet->endPhoto) != 'Y');
+        		packet* new_packet = new packet();
 
-	        	cout<<"\nSuccesfully recieved photo number "<<photo_num<<std::endl;
-	        	logFile<<"\nSuccesfully recieved photo number "<<photo_num<<std::endl;
+        		cout<<"\nBuilding packet "<<packet_count<<"\n";
+        		new_packet = build_packet(frameArray);
+        		logFile<<"\nBuilt packet "<<packet_count<<std::endl;
 
-	        	//stream.close();
+        		memset(tempString, 0, sizeof(tempString));								//Clear memory for the new ack to be created
 
-	        } while(photo_num < p_num);
-	        
-	        logFile<<"\nRecieved "<<p_num<<" photos, closing connection to client "<<client_id<<std::endl;
+        		build_packet_ack(new_packet, tempString);								//Creates nwl ack to be sent
+        		
+        		/*Nwl send*/
+        		
+        		int sendRes = send(clntSock, tempString, strlen(tempString), 0);
+					if (sendRes < 0){
+						DieWithError("Send to network layer failed");
+					}
 
-	        cout<<"\n\nClosed socket...\n\n";
-        	close(clntSock);
-            exit(0);
+				logFile<<"Sent newlork layer ack for packet\n";
+				
+				/*End nwl send*/
+
+				cout<<"Writing to file...\n";
+        		
+				FILE * out = fopen(photo_name.c_str(), "a");							//Open picture file in append mode
+				int count = 0;
+
+				while (count < new_packet->datalenght)
+				{																		//Operation is done byte by byte since it is binary 
+					fprintf(out, "%c", new_packet->payload[count]);						//Write current packets payload
+					count++;															
+				}
+
+				cout<<"Bytes written: "<<count<<std::endl;
+				fclose(out);  															//Close picture
+
+			/*End nwl recieve*/	
+        	}while(!endPicflag);
+
+        	cout<<"\nSuccesfully recieved photo number "<<photo_num<<std::endl;
+        	logFile<<"\n\n"<<message_display<<"\nSuccesfully recieved photo number :"<<photo_num<<std::endl;
+        	logFile<<"Total packets recieved: "<<packet_count<<"\nTotal bad frames: "<<(total_frames_recieved - total_good_frames)<<std::endl;
+        	logFile<<message_display<<"\n\n";
+        } while(photo_num < p_num);
+        
+        time(&endCopy);
+
+        double time_secs;
+
+        time_secs = difftime(endCopy, startCopy);
+        
+        logFile<<message_display<<"\n"<<message_display<<std::endl;
+        logFile<<"\nRecieved "<<p_num<<" photos\nElapsed time: "<<time_secs<<" seconds\nClosing connection to client "<<client_id<<".\n";
+
+        cout<<"\n\nClosing socket...\n\n";
+        logFile<<message_display<<"\n"<<message_display<<std::endl;
+
+    	close(clntSock);					//Close connection to client
+        exit(0);							//Terminate child process succesfully
     	}
 
-        else if (pid > 0){
-        close(clntSock);  // parent doesn't need this
-    }
+    	else if (pid > 0){
+        	close(clntSock);  						//Parent doesn't need new connection socket
+    	}
 
- }
+ 	}
+ 	/* NOT REACHED */
 }
- /* NOT REACHED */
+ 
 
 
 void DieWithError(char *errorMessage)
@@ -418,7 +415,9 @@ void DieWithError(char *errorMessage)
 
 frame* read_frame(char* buffer){
 
-	cout<<"\n\nIn read_frame(): \n";
+	if(DEBUG_0){
+		cout<<"In read_frame(): \n";
+	}
 
 	frame* new_frame = new frame();
 	
@@ -429,18 +428,17 @@ frame* read_frame(char* buffer){
 	int startUsableBytes = startEOP + EOP_SIZE;
 	int startPayload = startUsableBytes + USABLE_BYTES;
 	int startERRD = startPayload + PAYLOAD_SIZE;
-	//int startENDP = startERRD + SIZE_ENDPHOTO;
 	char seq_num[SEQ_NUM_SIZE + 1];
-	//int ED_temp;
 	char frameType;
 	char usable_b[USABLE_BYTES + 1];
-	//char EOP;
 	char ED[ERRD_SIZE + 1];
 	char payload[130];
 		
 	memset(seq_num, 0, strlen(seq_num));
 	
-	//cout<<"Parsing sequence number...\n";
+	if(DEBUG_0){
+		cout<<"Parsing sequence number...\n";
+	}
 	while (i < place+SEQ_NUM_SIZE){
 		
 		if(DEBUG_0){
@@ -456,7 +454,10 @@ frame* read_frame(char* buffer){
 		i++;	
 	}
 	seq_num[SEQ_NUM_SIZE] = '\0';
-	//cout<<"Parsed sequence number: "<<seq_num<<std::endl;
+	
+	if(DEBUG_0){
+		cout<<"Parsed sequence number: "<<seq_num<<std::endl;
+	}
 	
 	if(DEBUG_0){
 	cout<<"Value i: "<<i<<std::endl;
@@ -464,12 +465,18 @@ frame* read_frame(char* buffer){
 	
 	place=i;
 	
-	//cout<<"Parsing frame type...\n";
+	if(DEBUG_0){
+		cout<<"Parsing frame type...\n";
+	}
+	
 	while (i< place+FRAME_TYPE_SIZE){
 		strncat(&new_frame->frameType, &buffer[i], 1);
 		i++;
 	}
-	//cout<<"Parsed frame type: "<<frameType<<std::endl;
+	
+	if(DEBUG_0){
+		cout<<"Parsed frame type: "<<frameType<<std::endl;
+	}
 	
 	if(DEBUG_0){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
@@ -477,7 +484,10 @@ frame* read_frame(char* buffer){
 	
 	place=i;
 	
-	//cout<<"Parsing EOP...\n";
+	if(DEBUG_0){
+		cout<<"Parsing EOP...\n";
+	}
+
 	while (i < place+EOP_SIZE){
 		
 		if(DEBUG_0){
@@ -487,14 +497,21 @@ frame* read_frame(char* buffer){
 		strncpy(&new_frame->EOP, &buffer[i], 1);
 		i++;
 	}
-	//cout<<"Parsed EOP...\n";
-	 place =i;
+	
+	if(DEBUG_0){
+		cout<<"Parsed EOP...\n";
+	}
+
+	place =i;
 	
 	if(DEBUG_0){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	}
 	
-	//cout<<"Parsing usable bytes...\n";
+	if(DEBUG_0){
+		cout<<"Parsing usable bytes...\n";
+	}
+
 	while (i < place+USABLE_BYTES){
 		
 		if(DEBUG_0){
@@ -505,13 +522,17 @@ frame* read_frame(char* buffer){
 		i++;
 	}
 	usable_b[USABLE_BYTES] = '\0';
-	//cout<<"Printing usable_b string: "<<usable_b<<std::endl;
-
-	//cout<<"Parsed usable bytes...\n";
+	
+	if(DEBUG_0){
+		cout<<"Printing usable_b string: "<<usable_b<<std::endl;
+		cout<<"Parsed usable bytes...\n";
+	}
 	
 	place=i;
 	
-	//cout<<"Parsing payload...\n";
+	if(DEBUG_0){
+		cout<<"Parsing payload...\n";
+	}
 
 	int bytes_rcvd = atoi(usable_b);
 
@@ -533,8 +554,10 @@ frame* read_frame(char* buffer){
 		cout<<"Payload["<<i-startPayload<<"] "<<&payload[i-startPayload]<<std::endl;
 		}
 	}
-	//memset(&new_frame->payload[bytes_rcvd], 0, PAYLOAD_SIZE - bytes_rcvd);
-	//cout<<"Parsed payload...\n";
+
+	if(DEBUG_0){
+		cout<<"Parsed payload...\n";
+	}
 	
 	place=i;
 	
@@ -542,12 +565,17 @@ frame* read_frame(char* buffer){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	}
 	
-	//cout<<"Parsing Error Detection...\n";
+	if(DEBUG_0){
+		cout<<"Parsing Error Detection...\n";
+	}
+	
 	while(i < place+ERRD_SIZE){
 		strncpy(&ED[i-startERRD], &buffer[i], 1);
 		i++;
 	}
+
 	place = i;
+
 	if(DEBUG_0){
 	cout<<"Error Detection string: "<<ED<<std::endl;
 	}
@@ -567,7 +595,7 @@ frame* read_frame(char* buffer){
 		else{
 			break;
 		}
-		
+
 		parse++;
 	}
 
@@ -583,82 +611,12 @@ frame* read_frame(char* buffer){
 	cout<<"Parsed Error Detection: "<<ED<<std::endl;
 	}
 	
-	new_frame->seqNumber = atoi(seq_num);
-	/***********************************NEEDS TO BE CHECKED****************************/
-	//new_frame->payload[PAYLOAD_SIZE] = '\0';
-	
+	new_frame->seqNumber = atoi(seq_num);	
 	new_frame->usable_bytes = bytes_rcvd;
 	new_frame->ED = atoi(&ED[ignore]);
-	
-	//printFrame(*new_frame);
-	return new_frame;	
+
+	return new_frame;												//Juan Rodriguez
 		
-}
-
-packet* build_packet(frame* frame_array[]){
-
-	packet* new_packet = new packet();
-	int frames_processed, bytes_r, total_bytes_r;
-
-	frames_processed = 0;
-	//bytes_r = 0;
-	total_bytes_r = 0;
-
-	//Posibly need to rearrange array
-
-	//while(frames_processed < frames_count){
-	while(total_bytes_r < MAX_PACKET_PAYLOAD){
-		
-		frame* tempFrame = new frame();
-		
-		bytes_r = 0;
-		
-		tempFrame = frame_array[frames_processed];
-
-		cout<<"\nProcessing frame "<<tempFrame->seqNumber<<std::endl;
-
-		//printFrame(*tempFrame);
-		
-			while(bytes_r <= tempFrame->usable_bytes){
-				
-				if(DEBUG_2)
-					cout<<"\n\nFrame payload["<<bytes_r<<"] "<<tempFrame->payload[bytes_r]<<std::endl;
-				
-				new_packet->payload[total_bytes_r] = tempFrame->payload[bytes_r];
-				
-				
-				if(DEBUG_2){
-					cout<<"Payload["<<total_bytes_r<<"] "<<(int) new_packet->payload[total_bytes_r]<<std::endl;
-				}
-
-				bytes_r++;
-				total_bytes_r++;
-			}
-		frames_processed++;
-	
-		if(tempFrame->endPhoto == END_PHOTO){
-			new_packet->endPhoto = END_PHOTO;
-			cout<<"Reached end of photo...\n";
-			break;
-		}
-		else if(tempFrame->endPhoto == 'N'){
-			new_packet->endPhoto = 'N';
-		}
-		
-		//cout<<"Packet endPhoto after Processing"
-		if(tempFrame->EOP == 'E'){
-
-			cout<<"Reached end of packet\n";
-			break;
-		}
-		
-	}
-		
-	total_bytes_r--;
-	new_packet->datalenght = total_bytes_r;
-
-	return new_packet;
-	
 }
 
 void get_init_pck(int& client_id,int& p_num,char* buffer){
@@ -714,13 +672,75 @@ void get_init_pck(int& client_id,int& p_num,char* buffer){
 	p_num = atoi(tempPNUM);
 
 	cout<<"Client ID: "<<client_id<<"\n";
-	cout<<"Photo number: "<<p_num<<"\n";
+	cout<<"Photo number: "<<p_num<<"\n";					//Juan Rodriguez
 }
 
+
+packet* build_packet(frame* frame_array[]){
+
+	packet* new_packet = new packet();
+	int frames_processed, bytes_r, total_bytes_r;
+
+	frames_processed = 0;
+	total_bytes_r = 0;
+
+	while(total_bytes_r < MAX_PACKET_PAYLOAD){
+		
+		frame* tempFrame = new frame();
+		tempFrame = frame_array[frames_processed];
+		bytes_r = 0;
+
+		cout<<"Processing frame "<<tempFrame->seqNumber<<std::endl;
+		
+		/*Copy the frame payload into the packet, byte by byte*/
+		while(bytes_r <= tempFrame->usable_bytes){	
+			
+			if(DEBUG_2)
+				cout<<"\n\nFrame payload["<<bytes_r<<"] "<<tempFrame->payload[bytes_r]<<std::endl;
+			
+			new_packet->payload[total_bytes_r] = tempFrame->payload[bytes_r];
+			
+			if(DEBUG_2)
+				cout<<"Payload["<<total_bytes_r<<"] "<<(int) new_packet->payload[total_bytes_r]<<std::endl;
+			
+			bytes_r++;
+			total_bytes_r++;
+		}
+
+		frames_processed++;
+		
+		/*If the frame processed contains the end of photo byte, 
+		set the end of picture flag and return to main function*/
+
+		if(tempFrame->endPhoto == END_PHOTO){
+			new_packet->endPhoto = END_PHOTO;
+			endPicflag = 1;
+			tempFrame->seqNumber = total_good_frames;
+			break;
+		}
+
+		else if(tempFrame->endPhoto == 'N'){
+			new_packet->endPhoto = 'N';
+			endPicflag = 0;
+		}
+		
+		if(tempFrame->EOP == 'E'){
+
+			cout<<"Reached end of packet\n";
+			break;
+		}
+		
+	}
+		
+	total_bytes_r--;								//Here to fix an issue, see README for more info
+	new_packet->datalenght = total_bytes_r;			//Store the amount of usable bytes in the packet payload
+
+	return new_packet;									//Juan Rodriguez
+	
+}
+
+
 void printPacket(packet pck){
-
-
-	//cout<<"Packet Payload:"<<std::endl; 
 
 	int i = 0;
 	
@@ -729,46 +749,29 @@ void printPacket(packet pck){
 		cout<<"packet Payload["<<i<<"]: "<<pck.payload[i]<<" acii value:"<<(int)pck.payload[i]<<std::endl;
 		i++;
 	}
-	
-	//cout<<"Error Detection: "<<fr.ED<<std::endl;
 }
 
 
-void printFrame (frame fr)																											//Alexi Kessler
+void printFrame (frame fr)														//Alexi Kessler
 {
-	cout<<"\n\nFrame read: \n";
-	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "
-		<<fr.EOP<<std::endl;
+	cout<<"\nFrame read: \n";
+	cout<<"Sequence Number: "<<fr.seqNumber<<"\nFrame Type: "<<fr.frameType<<"\nEnd of Packet Indicator: "<<fr.EOP<<std::endl;
 	cout<<"Usable bytes: "<<fr.usable_bytes<<std::endl;
-	/*
-	cout<<"Payload:"<<std::endl; 
-
-	int i = 0;
-	
-	while (i < MAX_FRAME_PAYLOAD) 
-	{
-		cout<<"Frame Payload["<<i<<"]: "<<fr.payload[i]<<" acii value:"<<(int)fr.payload[i]<<std::endl;
-		i++;
-	}
-	*/
 	cout<<"Error Detection: "<<fr.ED<<std::endl;
 	cout<<"End photo:"<<fr.endPhoto<<std::endl;
 }
 
-void build_frame_ack(frame* frame_recieved, char* ack_frame)
+void build_frame_ack(frame* frame_recieved, char* ack_frame)					//Juan Rodriguez
 {
 
 	char tempERRD[ERRD_SIZE+2];
-	//char endPhoto = '0';
 	char usable_bytes_buff[USABLE_BYTES+2];
-	//char ack_frame[SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO];
-	//char fake_payload[MAX_FRAME_PAYLOAD+ERRD_SIZE+1];
 	int length = 0;
 
 	sprintf(ack_frame, "%05hi%c0", frame_recieved->seqNumber, ACK_FRAME);
 	length += (SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE);
 	
-	if(DEBUG_6){
+	if(DEBUG_3){
 		cout<<"\n\nAck frame before usable_bytes: "<<ack_frame<<std::endl;
 	}
 
@@ -777,7 +780,7 @@ void build_frame_ack(frame* frame_recieved, char* ack_frame)
 	strcat(ack_frame, usable_bytes_buff);
 	length += USABLE_BYTES;
 	
-	if(DEBUG_6){
+	if(DEBUG_3){
 		cout<<"\n\nAck frame before payload: "<<ack_frame<<std::endl;
 	}
 	
@@ -790,23 +793,22 @@ void build_frame_ack(frame* frame_recieved, char* ack_frame)
 		i++;
 	}
 
-
 	sprintf(tempERRD, "%06hi", frame_recieved->seqNumber);
 
-	if(DEBUG_6){
+	if(DEBUG_3){
 		cout<<"\n\nTemp Error Detection: "<<tempERRD<<std::endl;
 	}
 
 	length += ERRD_SIZE;
 
-	if(DEBUG_6){
+	if(DEBUG_3){
 		cout<<"\n\nAck frame before Error Detection: "<<ack_frame<<std::endl;
 	}
 
 	strcat(ack_frame, tempERRD);
 	strncat(ack_frame, &temp, 1);
 	
-	if(DEBUG_6){
+	if(DEBUG_3){
 		cout<<"\n\nAck frame to be sent: "<<ack_frame<<std::endl;
 	}
 
@@ -814,16 +816,15 @@ void build_frame_ack(frame* frame_recieved, char* ack_frame)
 		if((total_frames_recieved % 11) == 0){
 			int flipLoc = (rand()%6)+142;
 			logFile<<"Introduced a bit error while sending"<<std::endl;
-			if (DEBUG_6)
+			if (DEBUG_3)
 				cout<<"flipping bit in place: "<<flipLoc<<std::endl;
 			ack_frame[flipLoc] += 1;
 		}
 	}
 
-	//return ack_frame;
 }
 
-void build_packet_ack(packet* packet_assembled, char* ack_packet)
+void build_packet_ack(packet* packet_assembled, char* ack_packet)				//Juan Rodriguez
 {
 
 	char tempERRD[ERRD_SIZE+2];
@@ -836,7 +837,7 @@ void build_packet_ack(packet* packet_assembled, char* ack_packet)
 	sprintf(ack_packet, "%05hi%c0", packet_count, DATA_FRAME);
 	length += (SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE);
 	
-	if(DEBUG_6){
+	if(DEBUG_4){
 		cout<<"\n\nAck frame before usable_bytes: "<<ack_packet<<std::endl;
 	}
 
@@ -845,7 +846,7 @@ void build_packet_ack(packet* packet_assembled, char* ack_packet)
 	strcat(ack_packet, usable_bytes_buff);
 	length += USABLE_BYTES;
 	
-	if(DEBUG_6){
+	if(DEBUG_4){
 		cout<<"\n\nAck frame before payload: "<<ack_packet<<std::endl;
 	}
 	
@@ -870,20 +871,20 @@ void build_packet_ack(packet* packet_assembled, char* ack_packet)
 
 	sprintf(tempERRD, "%06hi", packet_count);
 
-	if(DEBUG_6){
+	if(DEBUG_4){
 		cout<<"\n\nTemp Error Detection: "<<tempERRD<<std::endl;
 	}
 
 	length += ERRD_SIZE;
 
-	if(DEBUG_6){
+	if(DEBUG_4){
 		cout<<"\n\nAck frame before Error Detection: "<<ack_packet<<std::endl;
 	}
 
 	strcat(ack_packet, tempERRD);
 	strncat(ack_packet, &temp, 1);
 	
-	if(DEBUG_6){
+	if(DEBUG_4){
 		cout<<"\n\nAck frame to be sent: "<<ack_packet<<std::endl;
 	}
 
@@ -891,53 +892,51 @@ void build_packet_ack(packet* packet_assembled, char* ack_packet)
 	//return ack_frame;
 }
 
-void check_error(char* buffer, char* error_detect_char)
+void check_error(char* buffer, char* error_detect_char)							//Juan Rodriguez
 {
-	cout<<"\n\nIn check_error(): \n";
+	cout<<"In check_error(): \n";
 	int i = 0;
 	int place = 0;
 	int startFrameType = SEQ_NUM_SIZE;
 	int startEOP = startFrameType + FRAME_TYPE_SIZE;
 	int startUsableBytes = startEOP + EOP_SIZE;
 	int startPayload = startUsableBytes + USABLE_BYTES;
-	//int startERRD = startPayload + PAYLOAD_SIZE;
-	//char error_detect_char[startERRD];
 
 	char seq_num[SEQ_NUM_SIZE + 1];
 	char payload[130];
 		
 	memset(seq_num, 0, strlen(seq_num));
 	
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Parsing sequence number...\n";
 	}
 
 	while (i < place+SEQ_NUM_SIZE){
 		
-		if(DEBUG_0){
+		if(DEBUG_5){
 		cout<<"Value of i: "<<i<<"\nValue of place: "<<place<<std::endl;
 		cout<<"Starting copy..."<<std::endl;
 		}
 		strncpy(&error_detect_char[i], &buffer[i], 1);
 		
-		if(DEBUG_0){
+		if(DEBUG_5){
 		cout<<"\nValue of SEQ_NUM: "<<seq_num<<std::endl;
 		}
 		
 		i++;	
 	}
-	//seq_num[SEQ_NUM_SIZE] = '\0';
-	if(DEBUG_0){
+
+	if(DEBUG_5){
 		cout<<"Parsed sequence number: "<<error_detect_char<<std::endl;
 	}
 	
-	if(DEBUG_0){
+	if(DEBUG_5){
 	cout<<"Value i: "<<i<<std::endl;
 	}
 	
 	place=i;
 	
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Parsing frame type...\n";
 	}
 
@@ -945,7 +944,7 @@ void check_error(char* buffer, char* error_detect_char)
 		strncpy(&error_detect_char[i], &buffer[i], 1);
 		i++;
 	}
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Parsed frame type: "<<error_detect_char<<std::endl;
 	
 		cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
@@ -953,13 +952,13 @@ void check_error(char* buffer, char* error_detect_char)
 	
 	place=i;
 	
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Parsing EOP...\n";
 	}
 
 	while (i < place+EOP_SIZE){
 		
-		if(DEBUG_0){
+		if(DEBUG_5){
 		cout<<"EOP while 'i' value: "<<i<<std::endl;
 		}
 		
@@ -967,24 +966,17 @@ void check_error(char* buffer, char* error_detect_char)
 		i++;
 	}
 
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Parsed EOP...\n";
 	}
 
 	place =i;
 	
-	if(DEBUG_0){
+	if(DEBUG_5){
 	cout<<"Value i: "<<i<<"\nPlace: "<<place<<std::endl;
 	}
-	/*
-	int x = 0;
 
-	    while(x < BUFFSIZE){
-	    cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
-	    x++;
-		}
-	*/
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Parsing usable bytes...\n";
 	}
 
@@ -994,51 +986,40 @@ void check_error(char* buffer, char* error_detect_char)
 		i++;
 	}
 
-	//x= 0;
-	//while(x < startERRD){
-	//cout<<"error detect byte by byte: "<<error_detect_char[x]<<std::endl;
-	//x++;
-	//}
-	
-	//usable_b[USABLE_BYTES] = '\0';
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Printing usable_b string: "<<error_detect_char<<std::endl;
 		cout<<"Parsed usable bytes...\n";
 	}
 	
 	place=i;
 	
-	if(DEBUG_0){
+	if(DEBUG_5){
 		cout<<"Parsing payload...\n";
 	}
 	
 
 	while (i < place+PAYLOAD_SIZE){
 		
-		if(DEBUG_0){
+		if(DEBUG_5){
 			cout<<"Value i: "<<i<<std::endl;
 		}
-
-		//cout<<"Copying "<<buffer[i]<<" to error_detect_char["<<i<<"]\n\n";
 		
 		error_detect_char[i] = buffer[i];
 
-		//cout<<"error_detect_char["<<i<<"] is now"<<error_detect_char[i]<<std::endl;
 		i++;
 		
-		if(DEBUG_0){
+		if(DEBUG_5){
 		cout<<"Value i: "<<i<<std::endl;
 		cout<<"Payload["<<i-startPayload<<"] "<<&payload[i-startPayload]<<std::endl;
 		}
 	}
-	//memset(&new_frame->payload[bytes_rcvd], 0, PAYLOAD_SIZE - bytes_rcvd);
-	if(DEBUG_0){	
+
+	if(DEBUG_5){	
 		cout<<"Parsed payload...\n";
 	}
-	//return error_detect_char;
 }
 
-short int errorDetectCreate(char* info, int infoLength)																				//Alexi Kessler
+short int errorDetectCreate(char* info, int infoLength)							//Alexi Kessler
 {
 
 	char frameInfo[MAX_FRAME_SIZE];
