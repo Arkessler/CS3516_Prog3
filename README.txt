@@ -1,6 +1,7 @@
 Important topics
 
 -Input photo format
+	-IMPORTANT
 	-The program expects client id's that are four-digits long. This means that photo names must of a similar format to photo199101.jpg
 -Inclusion of data length in frame
 	-We have chosen to add a data length field to our frames. This is to allow for frames that do not contain full payloads.
