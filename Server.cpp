@@ -58,7 +58,7 @@ using namespace std;
 #define DEBUG_2 0
 #define DEBUG_6 0
 #define DEBUG_SPECIAL 1
-
+#define ACK_CORRUPTION 0
 class packet
 {
 	public:
@@ -97,6 +97,7 @@ void initial_print();
 std::ofstream logFile;
 std::string logLoc;
 int packet_count;
+int total_frames_recieved;
  
 
 int main(int argc, char *argv[]){ 
@@ -117,7 +118,6 @@ int main(int argc, char *argv[]){
  int frame_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO;
  int errorDetectString_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD;
  char errorDetectString[errorDetectString_size];
- int total_frames_recieved;
  packet* new_packet = new packet();
  int frame_is_bad;
  //int frame_size = SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD+ERRD_SIZE+SIZE_ENDPHOTO;
@@ -195,7 +195,7 @@ for (;;) /* Run forever */{
 				logLoc.append(fileType.str());
 				fileType.str(std::string());
 
-				cout<<"Log location: "<<logLoc.c_str();
+				cout<<"Log location: "<<logLoc.c_str()<<std::endl;
 
 				logFile.open(logLoc.c_str());
 				logFile<<"\nConnected to client "<<client_id<<std::endl;
@@ -266,10 +266,7 @@ for (;;) /* Run forever */{
 	                	    DieWithError("Error in recv()");
 	                	}
 					
-	                	//buffer[bytes_r] = '\0';
 						cout<<"Bytes recieved: "<<bytes_r<<std::endl;
-	                	
-	                	
 
 	                	if(DEBUG){               
 	                		int x = 0;
@@ -280,38 +277,14 @@ for (;;) /* Run forever */{
 	                		}
 	                	}
 
-	                	/*
-	                	int x = 0;
-
-	                		cout<<"\nBuffer recieved: \n";
-	                		while(x < BUFFSIZE){
-	                		cout<<"Buffer["<<x<<"]: "<<buffer[x]<<" ascii val: "<<(int) buffer[x]<<std::endl;
-	                		x++;
-	                		}
-						*/
-
 						inc_frame = read_frame(buffer);
 						total_frames_recieved++;
-						//logFile<<"Total frames recieved: "<<total_frames_recieved<<std::endl;
-
-						//cout<<"\nFrame to be checked for errors: \n";
-						//printFrame(*inc_frame);
 
 						check_error(buffer, errorDetectString);
-						
-						/*	
-							int y = 0;
-								while(y < SEQ_NUM_SIZE+FRAME_TYPE_SIZE+EOP_SIZE+USABLE_BYTES+MAX_FRAME_PAYLOAD){
-									//cout<<y<<std::endl;
-									cout<<"Error detect string[" <<y<< "] "<<errorDetectString[y]<<"\n"; 
-									y++;
-								}
-						*/	
-							
 
 						short int frame_read_error = errorDetectCreate(errorDetectString, errorDetectString_size);
 						
-						cout<<"From frameFrame: "<<inc_frame->seqNumber<<"\nError generated: "<<frame_read_error<<"\nError from frame "<<inc_frame->ED<<std::endl;
+						cout<<"From frame: "<<inc_frame->seqNumber<<"\nError generated: "<<frame_read_error<<"\nED from frame: "<<inc_frame->ED<<std::endl;
 						
 						if(frame_read_error == inc_frame->ED){
 							frame_is_bad = 0;
@@ -377,7 +350,7 @@ for (;;) /* Run forever */{
 
 
 						//w++;
-	        		} while(inc_frame->EOP != 'E' || frame_is_bad);
+	        		} while(inc_frame->EOP != END_PACKET || frame_is_bad);
 
 	        		packet* new_packet = new packet();
 
@@ -387,10 +360,8 @@ for (;;) /* Run forever */{
 
 	        		memset(tempString, 0, sizeof(tempString));
 
-	        		cout<<"Working until build_packet_ack()...\n";
 	        		build_packet_ack(new_packet, tempString);
-	        		cout<<"Working after build_packet_ack()...\n";
-
+	        		
 	        		int sendRes = send(clntSock, tempString, strlen(tempString), 0);
 						if (sendRes < 0){
 							DieWithError("Send to network layer failed");
@@ -411,11 +382,12 @@ for (;;) /* Run forever */{
 					
 					fclose(out);  
 
-	        		//cout<<"\nEnd of photo: "<<new_packet->endPhoto<<std::endl;
+	        		cout<<"\nEnd of photo: "<<new_packet->endPhoto<<std::endl;
 
 
-	        	} while(new_packet->endPhoto != 'E');
+	        	}while((new_packet->endPhoto) != 'Y');
 
+	        	cout<<"\nSuccesfully recieved photo number "<<photo_num<<std::endl;
 	        	logFile<<"\nSuccesfully recieved photo number "<<photo_num<<std::endl;
 
 	        	//stream.close();
@@ -663,22 +635,30 @@ packet* build_packet(frame* frame_array[]){
 				total_bytes_r++;
 			}
 		frames_processed++;
-
+	
 		if(tempFrame->endPhoto == END_PHOTO){
 			new_packet->endPhoto = END_PHOTO;
+			cout<<"Reached end of photo...\n";
+			break;
 		}
-
+		else if(tempFrame->endPhoto == 'N'){
+			new_packet->endPhoto = 'N';
+		}
+		
+		//cout<<"Packet endPhoto after Processing"
 		if(tempFrame->EOP == 'E'){
 
 			cout<<"Reached end of packet\n";
 			break;
 		}
+		
 	}
-
+		
 	total_bytes_r--;
 	new_packet->datalenght = total_bytes_r;
 
 	return new_packet;
+	
 }
 
 void get_init_pck(int& client_id,int& p_num,char* buffer){
@@ -830,15 +810,16 @@ void build_frame_ack(frame* frame_recieved, char* ack_frame)
 		cout<<"\n\nAck frame to be sent: "<<ack_frame<<std::endl;
 	}
 
-/*
-	if((frame_recieved->seqNumber % 11) == 0){
-		int flipLoc = (rand()%6)+142;
-		logFile<<"Introduced a bit error while sending"<<std::endl;
-		if (DEBUG_6)
-			cout<<"flipping bit in place: "<<flipLoc<<std::endl;
-		ack_frame[flipLoc] += 1;
+	if(ACK_CORRUPTION){
+		if((total_frames_recieved % 11) == 0){
+			int flipLoc = (rand()%6)+142;
+			logFile<<"Introduced a bit error while sending"<<std::endl;
+			if (DEBUG_6)
+				cout<<"flipping bit in place: "<<flipLoc<<std::endl;
+			ack_frame[flipLoc] += 1;
+		}
 	}
-*/
+
 	//return ack_frame;
 }
 
