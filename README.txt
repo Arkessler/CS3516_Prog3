@@ -16,7 +16,7 @@ Client specific
 -Frames sent counts retransmissions
 	-We were unsure of whether or not to count retransmitted frames in the total number of frames sent, we decided to do so.
 -Expects First photo to be photoCid0.jpg
-	-The client expect a naming schema where the first photo is numbered 0.
+	-The client expects a naming schema where the first photo is numbered 0.
 
 Server specific
 -Server usage

@@ -190,7 +190,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 	logFile<<"Total number of frames sent: "<<numFramesSent<<std::endl;
 	logFile<<"Number of frames that were retransmission: "<<numFramesRetransmitted<<std::endl;
 	logFile<<"Total number of good ACK's received: "<<totalGoodAcksReceived<<std::endl;
-	logFile<<"Total number of bas ACK's received: "<<totalBadAcksReceived<<std::endl;
+	logFile<<"Total number of bad ACK's received: "<<totalBadAcksReceived<<std::endl;
 	phl_close();																													//Close socket after reading last photo
 }
 
@@ -270,7 +270,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	
 	numPacketsSent++;	
 	logFile<<"\nSent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;														//Initial logging. Placed here to ensure success of packet send.
-	
+	cout<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
 	if (pkt.endPhoto == END_PACKET)
 		endPhoto = true;
 	else 
@@ -607,7 +607,7 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 	for(p = servinfo; p != NULL; p = p->ai_next)
 	{																																//loop through all the results 		
 		
-		cout<<"Checking getaddrinfo result"<<std::endl;
+		//cout<<"Checking getaddrinfo result"<<std::endl;
 		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
 		{
 			perror("socket");
@@ -620,11 +620,8 @@ int phl_connect(struct sockaddr_in serverAddress, unsigned short serverPort, cha
 		int connectRes;
 		if ((connectRes = connect(sockfd, p->ai_addr, p->ai_addrlen)) != 0) 														//Test that connection is successful
 		{
-			if (DEBUG)
-			{
-				cout<<"ConnectRes: "<<connectRes<<std::endl;
-				cout<<"Error number: "<<strerror(errno)<<std::endl;
-			}
+			cout<<"ConnectRes: "<<connectRes<<std::endl;
+			cout<<"Error number: "<<strerror(errno)<<std::endl;
 			return -1;
 		}
 		else
@@ -827,10 +824,11 @@ short int errorDetectCreate(char* info, int infoLength)																				//Ale
 	int counter = 0;
 	char tempArray1[10];  																											//Honestly, I don't know why these need more than two bytes. But
 	char tempArray2[10];																											//when allocating only two, they kept overwriting the counter
-	char XOR[10];																													//Two bytes
+	char XOR[2];																													//Two bytes
 	char tempChar1;
 	char tempChar2;
 	short int retVal;
+	memset(XOR, 0, 2);
 	while (counter < infoLength)
 	{
 		if (counter == 0)
