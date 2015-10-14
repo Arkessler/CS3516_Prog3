@@ -271,7 +271,7 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 	numPacketsSent++;	
 	logFile<<"\nSent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;														//Initial logging. Placed here to ensure success of packet send.
 	cout<<"Sent packet "<<numPacketsSent<<" to Data Link Layer"<<std::endl;
-	if (pkt.endPhoto == END_PACKET)
+	if (pkt.endPhoto == END_PHOTO)
 		endPhoto = true;
 	else 
 		endPhoto = false;
@@ -310,8 +310,11 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 				tempCount++;
 			}
 			sendFrame->ED = 0; 																										//Placeholder, actual Error Detect Create takes place right before sending
-			if (endPhoto)
+			if (endPhoto && ((pkt.dataLength) == 130))
+			{
+				cout<<"pkt datalength: "<<pkt.dataLength<<std::endl;
 				sendFrame->endPhoto = END_PHOTO;
+			}
 			else
 				sendFrame->endPhoto = CONT_PHOTO;
 			
@@ -379,7 +382,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 							} 
 						}
 						else
+						{
+							printFrame(*recvFrame);
 							DieWithError("Received frame is invalid");
+						}
 						if (DEBUG)
 							cout<<"Retransmitted sucessfully, received reply"<<std::endl;
 					}
@@ -423,7 +429,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						} 
 					}
 					else
+					{
+						printFrame(*recvFrame);
 						DieWithError("Received frame is invalid");
+					}
 				}																													//end ACK receive 
 			} while (retransmit);																									//end frame transmission
 		} 																															//end frame construction
@@ -515,7 +524,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 						}
 					}
 					else
+					{
+						printFrame(*recvFrame);
 						DieWithError("Received frame is invalid");
+					}
 					if (DEBUG)
 						cout<<"Retransmitted sucessfully, received reply"<<std::endl;
 				}
@@ -556,7 +568,10 @@ frame dll_send(packet pkt)																											//Alexi Kessler
 					}
 				}
 				else
+				{
+					printFrame(*recvFrame);
 					DieWithError("Received frame is invalid");
+				}
 			}																														//end ACK receive 									
 		} while (retransmit);																										//end frame transmission
 	}																																//end frame construction
