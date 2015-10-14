@@ -169,7 +169,7 @@ int main(int argc, char* argv[])																									//Alexi Kessler
 		cout<<"Phl_connect returned: "<<connectRes<<std::endl;
 
 	int getTimeRes = gettimeofday(&startTime, NULL);
-	for (count = 0; count<numPhoto; count++)
+	for (count = 1; count<(numPhoto+1); count++)
 	{																																//Set new readLoc
 		readLoc = "photo";
 		manipStream<<cId;																											//Convert cId to string
